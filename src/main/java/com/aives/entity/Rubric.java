@@ -26,6 +26,10 @@ public class Rubric {
     @JoinColumn(name = "subject_uuid", nullable = false)
     private Subject subject;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "question_uuid")
+    private Question question;
+
     @Column(name = "criterion_name", nullable = false, length = 150)
     private String criterionName;
 

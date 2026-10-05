@@ -53,10 +53,8 @@ public class SecurityConfig {
                         // WebSocket for real-time viva exam rooms
                         .requestMatchers("/ws/**").permitAll()
 
-                        // Payment webhooks / return status
-                        .requestMatchers("/api/v1/payments/momo/ipn").permitAll()
-                        .requestMatchers("/api/v1/payments/momo/status").permitAll()
-                        .requestMatchers("/api/v1/payments/vnpay/status").permitAll()
+                        // Common subjects catalog
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subjects/**").permitAll()
 
                         // Admin endpoints
                         .requestMatchers("/api/v1/admin/**").hasRole(RoleEnum.ADMIN.name())

@@ -9,33 +9,38 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "subjects")
+@Table(name = "documents")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Subject {
+public class Document {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "uuid", updatable = false, nullable = false)
     private UUID uuid;
 
-    @Column(name = "code", nullable = false, unique = true, length = 50)
-    private String code;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "subject_uuid", nullable = false)
+    private Subject subject;
 
-    @Column(name = "name", nullable = false, length = 200)
-    private String name;
+    @Column(name = "file_name", nullable = false, length = 255)
+    private String fileName;
 
-    @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
+    @Column(name = "file_url", columnDefinition = "TEXT")
+    private String fileUrl;
 
-    @Column(name = "credits")
-    private Integer credits;
+    @Column(name = "file_size", length = 50)
+    private String fileSize;
 
-    @Column(name = "status", length = 20)
+    @Column(name = "status", length = 30)
     @Builder.Default
-    private String status = "ACTIVE";
+    private String status = "INDEXED"; // CHUNKING, VECTORIZING, INDEXED, FAILED
+
+    @Column(name = "chunk_count")
+    @Builder.Default
+    private Integer chunkCount = 0;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

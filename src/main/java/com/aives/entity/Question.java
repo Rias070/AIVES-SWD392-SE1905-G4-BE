@@ -28,6 +28,12 @@ public class Question {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(name = "question_code", length = 50)
+    private String questionCode;
+
+    @Column(name = "bloom_level", length = 50)
+    private String bloomLevel; // Bloom 1 - Nhớ, Bloom 2 - Hiểu, Bloom 3 - Vận dụng, Bloom 4 - Phân tích, etc.
+
     @Column(name = "difficulty", length = 20)
     @Builder.Default
     private String difficulty = "MEDIUM"; // EASY, MEDIUM, HARD
