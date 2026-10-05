@@ -44,11 +44,9 @@ public enum ErrorCode {
     EXAM_SESSION_FINISHED(3003, "Exam session has already finished", HttpStatus.BAD_REQUEST),
     VIVA_TURN_NOT_FOUND(3101, "Viva turn not found", HttpStatus.NOT_FOUND),
 
-    // === Lỗi Payment ===
-    PAYMENT_NOT_FOUND(4001, "Payment transaction not found", HttpStatus.NOT_FOUND),
-    INVALID_PAYMENT_AMOUNT(4002, "Payment amount is invalid", HttpStatus.BAD_REQUEST),
-    PAYMENT_FAILED(4003, "Payment failed", HttpStatus.BAD_REQUEST),
-    PAYMENT_ALREADY_PROCESSED(4004, "Payment has already been processed", HttpStatus.BAD_REQUEST),
+    // === Lỗi Document (RAG) ===
+    DOCUMENT_NOT_FOUND(2301, "Document not found", HttpStatus.NOT_FOUND),
+    DOCUMENT_UPLOAD_FAILED(2302, "Document upload failed", HttpStatus.INTERNAL_SERVER_ERROR),
     ;
 
     ErrorCode(int code, String message, HttpStatus statusCode) {
