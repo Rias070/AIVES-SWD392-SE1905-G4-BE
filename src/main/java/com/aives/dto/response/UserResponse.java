@@ -24,6 +24,7 @@ public class UserResponse {
     private RoleInfo role;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
 
     @Data
     @Builder

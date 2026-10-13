@@ -22,6 +22,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // STOMP WebSocket endpoint for AIVES real-time viva session rooms
         registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns("*");
+        registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }

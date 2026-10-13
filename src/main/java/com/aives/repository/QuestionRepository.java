@@ -12,4 +12,8 @@ public interface QuestionRepository extends JpaRepository<Question, UUID> {
     List<Question> findBySubjectUuid(UUID subjectUuid);
     List<Question> findBySubjectCode(String subjectCode);
     List<Question> findByDifficulty(String difficulty);
+    List<Question> findByStatus(String status);
+    List<Question> findBySubjectCodeAndStatus(String subjectCode, String status);
+    List<Question> findBySubjectUuidAndStatus(UUID subjectUuid, String status);
+    List<Question> findByDeletedAtIsNull();
 }

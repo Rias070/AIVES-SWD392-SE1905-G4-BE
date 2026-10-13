@@ -26,5 +26,6 @@ public class QuestionResponse {
     private String status;
     private Boolean isApproved;
     private Integer rubricCount;
+    private List<RubricResponse> rubrics;
     private LocalDateTime createdAt;
 }

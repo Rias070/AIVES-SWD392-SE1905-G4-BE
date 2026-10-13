@@ -31,7 +31,6 @@ public class UserCreateRequest {
 
     private String userCode;
 
-    @NotBlank(message = "Role name is required (ADMIN, LECTURER, STUDENT)")
     private String roleName;
 
     @Builder.Default

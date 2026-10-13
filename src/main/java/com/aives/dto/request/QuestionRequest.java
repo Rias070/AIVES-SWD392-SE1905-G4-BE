@@ -24,4 +24,5 @@ public class QuestionRequest {
     private String expectedAnswer;
     private String keywords;
     private String status; // ACTIVE, PENDING, APPROVED
+    private java.util.List<RubricRequest> rubrics;
 }

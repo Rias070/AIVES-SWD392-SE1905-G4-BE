@@ -21,4 +21,8 @@ public class SubjectRequest {
     private String description;
 
     private Integer credits;
+
+    private String language;
+
+    private String technicalTerms;
 }

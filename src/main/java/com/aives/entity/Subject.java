@@ -37,6 +37,13 @@ public class Subject {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(name = "language", length = 10)
+    @Builder.Default
+    private String language = "vi-VN";
+
+    @Column(name = "technical_terms", columnDefinition = "TEXT")
+    private String technicalTerms;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -44,4 +51,7 @@ public class Subject {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 }

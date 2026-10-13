@@ -36,6 +36,7 @@ public class AuthenticationService {
     private final UserRepository userRepository;
     private final UserManagementService userManagementService;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     @Value("${jwt.signer-key}")
     private String signerKey;
@@ -82,6 +83,18 @@ public class AuthenticationService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         String token = generateToken(user);
+
+        // Send confirmation email to student / lecturer
+        try {
+            emailService.sendRegistrationWelcomeEmail(
+                    user.getEmail(),
+                    user.getFullName(),
+                    request.getRoleName(),
+                    user.getUserCode()
+            );
+        } catch (Exception e) {
+            log.error("Failed to trigger welcome email to {}: {}", user.getEmail(), e.getMessage());
+        }
 
         return AuthResponse.builder()
                 .token(token)

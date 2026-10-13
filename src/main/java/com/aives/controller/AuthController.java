@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthenticationService authenticationService;
+    private final com.aives.service.EmailService emailService;
 
     @PostMapping("/login")
     @Operation(summary = "Login to system", description = "Authenticate with email and password to receive JWT Bearer token")
@@ -43,6 +44,18 @@ public class AuthController {
                 .code(1000)
                 .message("Register account successfully")
                 .result(response)
+                .build());
+    }
+
+    @GetMapping("/test-mail")
+    @Operation(summary = "Test sending email", description = "Trigger a test registration welcome email to the specified address")
+    public ResponseEntity<ApiResponse<String>> testMail(@RequestParam String to) {
+        log.info("GET /api/v1/auth/test-mail: to={}", to);
+        emailService.sendRegistrationWelcomeEmail(to, "Người Dùng Thử Nghiệm", "STUDENT", "SE190001");
+        return ResponseEntity.ok(ApiResponse.<String>builder()
+                .code(1000)
+                .message("Lệnh gửi email chào mừng đã được khởi tạo thành công tới: " + to)
+                .result("Dispatched to " + to)
                 .build());
     }
 }
