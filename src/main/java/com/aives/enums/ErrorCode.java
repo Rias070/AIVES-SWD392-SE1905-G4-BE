@@ -23,6 +23,7 @@ public enum ErrorCode {
     ACCOUNT_LOCKED(1010, "Account has been locked!", HttpStatus.FORBIDDEN),
     ACCOUNT_INACTIVE(1035, "Account is inactive!", HttpStatus.FORBIDDEN),
     ROLE_NOT_FOUND(1040, "Role not found", HttpStatus.NOT_FOUND),
+    EMAIL_SEND_FAILED(1012, "Failed to send email notification", HttpStatus.INTERNAL_SERVER_ERROR),
 
     // === Lỗi Validation Input ===
     INVALID_EMAIL(1011, "Invalid email address", HttpStatus.BAD_REQUEST),

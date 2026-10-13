@@ -11,4 +11,5 @@ import java.util.UUID;
 public interface RubricRepository extends JpaRepository<Rubric, UUID> {
     List<Rubric> findBySubjectUuid(UUID subjectUuid);
     List<Rubric> findByQuestionUuid(UUID questionUuid);
+    void deleteByQuestionUuid(UUID questionUuid);
 }

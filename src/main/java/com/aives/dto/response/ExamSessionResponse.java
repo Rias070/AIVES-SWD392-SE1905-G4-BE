@@ -29,4 +29,6 @@ public class ExamSessionResponse {
     private Integer turnsCount;
     private String rubricBadge;
     private String badgeColor;
+    private String language;
+    private String technicalTerms;
 }

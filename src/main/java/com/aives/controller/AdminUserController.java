@@ -25,13 +25,14 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/admin/users")
+@RequestMapping({"/api/v1/admin/users", "/api/admin/users"})
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Admin - User Management", description = "CRUD endpoints for admin to manage user accounts and assign roles")
 public class AdminUserController {
 
     private final UserManagementService userManagementService;
+    private final com.aives.service.EmailService emailService;
 
     @PostMapping
     @Operation(summary = "Create a new user account",
@@ -43,6 +44,19 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse<UserResponse>> createUser(@Valid @RequestBody UserCreateRequest request) {
         log.info("POST /api/v1/admin/users - createUser: email={}", request.getEmail());
         UserResponse created = userManagementService.createUser(request);
+        
+        try {
+            emailService.sendAccountCreationEmail(
+                    created.getEmail(),
+                    created.getFullName(),
+                    request.getRoleName(),
+                    created.getUserCode(),
+                    request.getPassword()
+            );
+        } catch (Exception e) {
+            log.error("Failed to send account creation email to {}: {}", created.getEmail(), e.getMessage());
+        }
+
         return ResponseEntity.ok(ApiResponse.<UserResponse>builder()
                 .code(1000)
                 .message("User created successfully")
@@ -133,13 +147,25 @@ public class AdminUserController {
 
     @DeleteMapping("/{uuid}")
     @Operation(summary = "Soft-delete user (set status = INACTIVE)",
-            description = "Marks the user as INACTIVE. Does not remove from DB to preserve payment / exam history.")
-    public ResponseEntity<ApiResponse<UserResponse>> softDelete(@PathVariable UUID uuid) {
+            description = "Marks the user as INACTIVE. Does not remove from DB to preserve audit and exam history.")
+    public ResponseEntity<ApiResponse<UserResponse>> deleteUser(@PathVariable UUID uuid) {
         log.info("DELETE /api/v1/admin/users/{}", uuid);
         UserResponse updated = userManagementService.softDelete(uuid);
         return ResponseEntity.ok(ApiResponse.<UserResponse>builder()
                 .code(1000)
                 .message("User deactivated successfully")
+                .result(updated)
+                .build());
+    }
+
+    @PatchMapping("/{uuid}/soft-delete")
+    @Operation(summary = "Explicit soft-delete user (set deleted_at = NOW and status = INACTIVE)")
+    public ResponseEntity<ApiResponse<UserResponse>> softDeleteUser(@PathVariable UUID uuid) {
+        log.info("PATCH /api/admin/users/{}/soft-delete", uuid);
+        UserResponse updated = userManagementService.softDelete(uuid);
+        return ResponseEntity.ok(ApiResponse.<UserResponse>builder()
+                .code(1000)
+                .message("User soft-deleted successfully (deleted_at set)")
                 .result(updated)
                 .build());
     }

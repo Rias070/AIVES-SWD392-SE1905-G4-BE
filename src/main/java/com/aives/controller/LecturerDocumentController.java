@@ -45,6 +45,19 @@ public class LecturerDocumentController {
                 .build());
     }
 
+    @PostMapping(value = "/upload-file", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload syllabus file (PDF, DOCX, TXT) and trigger chunking & embedding")
+    public ResponseEntity<ApiResponse<DocumentResponse>> uploadDocumentFile(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(value = "subjectCode", required = false) String subjectCode,
+            @RequestParam(value = "subjectUuid", required = false) UUID subjectUuid) {
+        return ResponseEntity.ok(ApiResponse.<DocumentResponse>builder()
+                .code(1000)
+                .message("Tải lên tệp và tạo vector chunking thành công")
+                .result(lecturerService.uploadDocumentFile(file, subjectCode, subjectUuid))
+                .build());
+    }
+
     @PostMapping("/{id}/vectorize")
     @Operation(summary = "Trigger vectorization for a document")
     public ResponseEntity<ApiResponse<DocumentResponse>> vectorizeDocument(@PathVariable UUID id) {

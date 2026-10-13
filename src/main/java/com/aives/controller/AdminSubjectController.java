@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/admin/subjects")
+@RequestMapping({"/api/v1/admin/subjects", "/api/admin/subjects"})
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Admin - Subject Management", description = "Endpoints for managing subjects and lecturer assignments")
@@ -74,12 +74,22 @@ public class AdminSubjectController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Delete a subject")
+    @Operation(summary = "Delete a subject (soft delete)")
     public ResponseEntity<ApiResponse<Void>> deleteSubject(@PathVariable UUID id) {
         subjectService.deleteSubject(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(1000)
                 .message("Xóa môn học thành công")
+                .build());
+    }
+
+    @PatchMapping("/{id}/soft-delete")
+    @Operation(summary = "Explicit soft-delete subject (set deleted_at = NOW and status = INACTIVE)")
+    public ResponseEntity<ApiResponse<Void>> softDeleteSubject(@PathVariable UUID id) {
+        subjectService.deleteSubject(id);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Môn học đã được xóa mềm thành công (deleted_at set)")
                 .build());
     }
 
@@ -118,6 +128,43 @@ public class AdminSubjectController {
                 .build());
     }
 
+    @PostMapping("/{subjectId}/assign-lecturer")
+    @Operation(summary = "Assign a lecturer to a specific subject")
+    public ResponseEntity<ApiResponse<SubjectAssignmentResponse>> assignLecturerToSubject(
+            @PathVariable UUID subjectId,
+            @RequestBody SubjectAssignRequest request) {
+        request.setSubjectUuid(subjectId);
+        SubjectAssignmentResponse response = subjectService.assignSubject(request);
+        return ResponseEntity.ok(ApiResponse.<SubjectAssignmentResponse>builder()
+                .code(1000)
+                .message("Phân công giảng viên cho môn học thành công")
+                .result(response)
+                .build());
+    }
+
+    @GetMapping("/{subjectId}/lecturers")
+    @Operation(summary = "Get list of lecturers assigned to a specific subject")
+    public ResponseEntity<ApiResponse<List<SubjectAssignmentResponse>>> getSubjectLecturers(
+            @PathVariable UUID subjectId) {
+        return ResponseEntity.ok(ApiResponse.<List<SubjectAssignmentResponse>>builder()
+                .code(1000)
+                .message("Lấy danh sách giảng viên của môn học thành công")
+                .result(subjectService.getSubjectLecturers(subjectId))
+                .build());
+    }
+
+    @DeleteMapping("/{subjectId}/lecturers/{lecturerId}")
+    @Operation(summary = "Unassign a lecturer from a specific subject")
+    public ResponseEntity<ApiResponse<Void>> unassignLecturerFromSubject(
+            @PathVariable UUID subjectId,
+            @PathVariable UUID lecturerId) {
+        subjectService.removeLecturerFromSubject(subjectId, lecturerId);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .code(1000)
+                .message("Hủy phân công giảng viên khỏi môn học thành công")
+                .build());
+    }
+
     @PutMapping("/assignments/{assignmentId}/permissions")
     @Operation(summary = "Update RAG and Rubric permissions for an assignment")
     public ResponseEntity<ApiResponse<SubjectAssignmentResponse>> updatePermissions(
@@ -138,6 +185,19 @@ public class AdminSubjectController {
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .code(1000)
                 .message("Hủy phân công thành công")
+                .build());
+    }
+
+    @PatchMapping("/{id}/language-config")
+    @Operation(summary = "Admin override/update subject examination language configuration")
+    public ResponseEntity<ApiResponse<SubjectResponse>> updateSubjectLanguageConfig(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.aives.dto.request.SubjectLanguageConfigDto request) {
+        SubjectResponse response = subjectService.updateLanguageConfig(id, request);
+        return ResponseEntity.ok(ApiResponse.<SubjectResponse>builder()
+                .code(1000)
+                .message("Cập nhật ngôn ngữ khảo thí môn học thành công")
+                .result(response)
                 .build());
     }
 }

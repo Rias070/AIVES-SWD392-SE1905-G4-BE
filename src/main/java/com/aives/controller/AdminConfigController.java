@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/admin/config")
+@RequestMapping({"/api/v1/admin/config", "/api/admin/config"})
 @RequiredArgsConstructor
 @Tag(name = "Admin - AI Viva Configuration", description = "Endpoints for managing AI viva parameters, STT and TTS models")
 public class AdminConfigController {

@@ -36,5 +36,24 @@ public class AIVivaConfigDto {
     @Builder.Default
     private Integer ragTopK = 3;
 
+    private Integer maxFollowupTurns;
+
+    private Integer maxAnswerTimeSec;
+
+    @Builder.Default
+    private Boolean isHumanInTheLoop = true;
+
     private Map<String, Object> extraParams;
+
+    public Integer getMaxFollowupTurns() {
+        return maxFollowupTurns != null ? maxFollowupTurns : maxTurns;
+    }
+
+    public Integer getMaxAnswerTimeSec() {
+        return maxAnswerTimeSec != null ? maxAnswerTimeSec : turnTimeoutSeconds;
+    }
+
+    public Boolean getIsHumanInTheLoop() {
+        return isHumanInTheLoop != null ? isHumanInTheLoop : true;
+    }
 }

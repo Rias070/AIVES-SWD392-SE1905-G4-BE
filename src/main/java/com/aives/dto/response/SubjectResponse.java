@@ -18,6 +18,9 @@ public class SubjectResponse {
     private Integer lecturerCount;
     private Integer questionCount;
     private Integer documentCount;
+    private String language;
+    private String technicalTerms;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
 }

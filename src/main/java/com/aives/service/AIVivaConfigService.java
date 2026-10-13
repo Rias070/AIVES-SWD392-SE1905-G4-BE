@@ -30,9 +30,31 @@ public class AIVivaConfigService {
 
     public AIVivaConfigDto updateConfig(AIVivaConfigDto newConfig) {
         log.info("Updating AI Viva configuration: {}", newConfig);
-        if (newConfig.getDefaultLanguage() != null) currentConfig.setDefaultLanguage(newConfig.getDefaultLanguage());
-        if (newConfig.getMaxTurns() != null) currentConfig.setMaxTurns(newConfig.getMaxTurns());
-        if (newConfig.getTurnTimeoutSeconds() != null) currentConfig.setTurnTimeoutSeconds(newConfig.getTurnTimeoutSeconds());
+        if (newConfig.getDefaultLanguage() != null) {
+            String lang = newConfig.getDefaultLanguage().trim();
+            if ("vi".equalsIgnoreCase(lang)) lang = "vi-VN";
+            if ("en".equalsIgnoreCase(lang)) lang = "en-US";
+            currentConfig.setDefaultLanguage(lang);
+        }
+        if (newConfig.getMaxTurns() != null) {
+            currentConfig.setMaxTurns(newConfig.getMaxTurns());
+            currentConfig.setMaxFollowupTurns(newConfig.getMaxTurns());
+        }
+        if (newConfig.getMaxFollowupTurns() != null) {
+            currentConfig.setMaxTurns(newConfig.getMaxFollowupTurns());
+            currentConfig.setMaxFollowupTurns(newConfig.getMaxFollowupTurns());
+        }
+        if (newConfig.getTurnTimeoutSeconds() != null) {
+            currentConfig.setTurnTimeoutSeconds(newConfig.getTurnTimeoutSeconds());
+            currentConfig.setMaxAnswerTimeSec(newConfig.getTurnTimeoutSeconds());
+        }
+        if (newConfig.getMaxAnswerTimeSec() != null) {
+            currentConfig.setTurnTimeoutSeconds(newConfig.getMaxAnswerTimeSec());
+            currentConfig.setMaxAnswerTimeSec(newConfig.getMaxAnswerTimeSec());
+        }
+        if (newConfig.getIsHumanInTheLoop() != null) {
+            currentConfig.setIsHumanInTheLoop(newConfig.getIsHumanInTheLoop());
+        }
         if (newConfig.getPassingScore() != null) currentConfig.setPassingScore(newConfig.getPassingScore());
         if (newConfig.getFeedbackTone() != null) currentConfig.setFeedbackTone(newConfig.getFeedbackTone());
         if (newConfig.getSttModel() != null) currentConfig.setSttModel(newConfig.getSttModel());

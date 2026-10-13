@@ -27,11 +27,12 @@ public class LecturerQuestionController {
     public ResponseEntity<ApiResponse<List<QuestionResponse>>> listQuestions(
             @RequestParam(required = false) UUID subjectUuid,
             @RequestParam(required = false) String difficulty,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.<List<QuestionResponse>>builder()
                 .code(1000)
                 .message("Lấy danh sách câu hỏi thành công")
-                .result(lecturerService.getQuestions(subjectUuid, difficulty, keyword))
+                .result(lecturerService.getQuestions(subjectUuid, difficulty, keyword, status))
                 .build());
     }
 
@@ -52,6 +53,30 @@ public class LecturerQuestionController {
                 .code(1000)
                 .message("Thêm câu hỏi mới thành công")
                 .result(lecturerService.createQuestion(request))
+                .build());
+    }
+
+    @PostMapping("/generate-rag")
+    @Operation(summary = "Generate draft questions and rubrics from syllabus via RAG + LLM")
+    public ResponseEntity<ApiResponse<List<QuestionResponse>>> generateQuestions(
+            @Valid @RequestBody com.aives.dto.request.QuestionGenerateRequest request) {
+        return ResponseEntity.ok(ApiResponse.<List<QuestionResponse>>builder()
+                .code(1000)
+                .message("Sinh câu hỏi RAG tự động thành công")
+                .result(lecturerService.generateQuestionsRAG(request))
+                .build());
+    }
+
+    @PostMapping("/approve-all")
+    @Operation(summary = "Approve all pending questions")
+    public ResponseEntity<ApiResponse<Integer>> approveAllPending(
+            @RequestParam(required = false) UUID subjectUuid,
+            @RequestParam(required = false) String subjectCode) {
+        int approvedCount = lecturerService.approveAllPending(subjectUuid, subjectCode);
+        return ResponseEntity.ok(ApiResponse.<Integer>builder()
+                .code(1000)
+                .message("Đã duyệt " + approvedCount + " câu hỏi thành công")
+                .result(approvedCount)
                 .build());
     }
 

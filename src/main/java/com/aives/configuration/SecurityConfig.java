@@ -23,7 +23,8 @@ public class SecurityConfig {
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
 
     private static final String[] PUBLIC_ENDPOINTS = {
-            "/api/v1/auth/**"
+            "/api/v1/auth/**",
+            "/api/auth/**"
     };
 
     public SecurityConfig(CorsConfigurationSource corsConfigurationSource,
@@ -41,7 +42,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(request -> request
                         // Public auth endpoints
-                        .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
 
                         // Swagger / OpenAPI documentation
                         .requestMatchers(
@@ -54,19 +55,22 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()
 
                         // Common subjects catalog
-                        .requestMatchers(HttpMethod.GET, "/api/v1/subjects/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subjects/**", "/api/subjects/**").permitAll()
+
+                        // Subject examination language configuration (Lecturer assigned or Admin)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/subjects/*/language-config", "/api/subjects/*/language-config").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.LECTURER.name())
 
                         // Admin endpoints
-                        .requestMatchers("/api/v1/admin/**").hasRole(RoleEnum.ADMIN.name())
+                        .requestMatchers("/api/v1/admin/**", "/api/admin/**").hasRole(RoleEnum.ADMIN.name())
 
                         // Lecturer endpoints
-                        .requestMatchers("/api/v1/lecturer/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.LECTURER.name())
+                        .requestMatchers("/api/v1/lecturer/**", "/api/lecturer/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.LECTURER.name())
 
                         // Student endpoints
-                        .requestMatchers("/api/v1/student/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.STUDENT.name())
+                        .requestMatchers("/api/v1/student/**", "/api/student/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.STUDENT.name())
 
                         // Authenticated user profile
-                        .requestMatchers("/api/v1/users/myinfo", "/api/v1/users/myinfo/**").authenticated()
+                        .requestMatchers("/api/v1/users/myinfo", "/api/v1/users/myinfo/**", "/api/users/myinfo", "/api/users/myinfo/**").authenticated()
 
                         // All other requests require authentication
                         .anyRequest().authenticated()

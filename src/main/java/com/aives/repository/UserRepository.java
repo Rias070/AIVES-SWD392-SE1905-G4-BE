@@ -25,7 +25,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query("SELECT DISTINCT u FROM User u " +
             "LEFT JOIN u.userRoles ur LEFT JOIN ur.role r " +
-            "WHERE (:keyword IS NULL OR :keyword = '' " +
+            "WHERE u.deletedAt IS NULL " +
+            "AND (:keyword IS NULL OR :keyword = '' " +
             "       OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
             "       OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
             "       OR LOWER(u.userCode) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +

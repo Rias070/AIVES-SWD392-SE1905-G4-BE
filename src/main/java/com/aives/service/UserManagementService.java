@@ -180,6 +180,7 @@ public class UserManagementService {
                         "User not found with uuid: " + uuid));
         ensureNotLockingLastActiveAdmin(user, UserStatus.INACTIVE);
         user.setStatus(UserStatus.INACTIVE);
+        user.setDeletedAt(java.time.LocalDateTime.now());
         User saved = userRepository.save(user);
         return mapToUserResponse(saved);
     }
@@ -271,6 +272,7 @@ public class UserManagementService {
                 .role(roleInfo)
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .deletedAt(user.getDeletedAt())
                 .build();
     }
 }
