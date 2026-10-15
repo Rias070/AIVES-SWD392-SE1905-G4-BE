@@ -27,4 +27,23 @@ public interface EmailService extends NotificationPort {
      * @param tempPassword mật khẩu tài khoản
      */
     void sendAccountCreationEmail(String toEmail, String fullName, String role, String userCode, String tempPassword);
+
+    /**
+     * Gửi email kèm link kích hoạt tài khoản cho user tự đăng ký (PENDING_EMAIL).
+     *
+     * @param toEmail          email người nhận
+     * @param fullName         họ và tên đầy đủ
+     * @param role             vai trò (STUDENT / LECTURER)
+     * @param activationLink    link kích hoạt tài khoản (JWT token)
+     */
+    void sendAccountActivationEmail(String toEmail, String fullName, String role, String activationLink);
+
+    /**
+     * Gửi email thông báo tài khoản đã được kích hoạt thành công.
+     *
+     * @param toEmail  email người nhận
+     * @param fullName họ và tên đầy đủ
+     * @param role     vai trò (STUDENT / LECTURER)
+     */
+    void sendActivationSuccessEmail(String toEmail, String fullName, String role);
 }

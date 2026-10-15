@@ -3,5 +3,6 @@ package com.aives.enums;
 public enum UserStatus {
     ACTIVE,
     LOCKED,
-    INACTIVE
+    INACTIVE,
+    PENDING_EMAIL
 }

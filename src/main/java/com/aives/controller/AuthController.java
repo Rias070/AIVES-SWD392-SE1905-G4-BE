@@ -1,8 +1,10 @@
 package com.aives.controller;
 
 import com.aives.application.port.in.AuthenticationUseCase;
+import com.aives.dto.request.ActivationRequest;
 import com.aives.dto.request.AuthRequest;
 import com.aives.dto.request.UserCreateRequest;
+import com.aives.dto.response.ActivationTokenResponse;
 import com.aives.dto.response.AuthResponse;
 import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,7 +38,8 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Register new account", description = "Self-registration for new students/lecturers")
+    @Operation(summary = "Register new account",
+            description = "Self-registration for students/lecturers — requires email activation. Admin role gets ACTIVE immediately.")
     public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody UserCreateRequest request) {
         log.info("POST /api/v1/auth/register: email={}", request.getEmail());
         AuthResponse response = authenticationService.register(request);
@@ -44,6 +47,32 @@ public class AuthController {
                 .code(1000)
                 .message("Register account successfully")
                 .result(response)
+                .build());
+    }
+
+    @GetMapping("/activate")
+    @Operation(summary = "Activate account via email link",
+            description = "Verify JWT activation token and activate the account. Call this when user clicks the link in their email.")
+    public ResponseEntity<ApiResponse<ActivationTokenResponse>> activate(@RequestParam String token) {
+        log.info("GET /api/v1/auth/activate: token received");
+        ActivationTokenResponse result = authenticationService.activateAccount(token);
+        return ResponseEntity.ok(ApiResponse.<ActivationTokenResponse>builder()
+                .code(1000)
+                .message(result.getMessage())
+                .result(result)
+                .build());
+    }
+
+    @PostMapping("/resend-activation")
+    @Operation(summary = "Resend activation email",
+            description = "Request a new activation email if the original link expired or was not received.")
+    public ResponseEntity<ApiResponse<String>> resendActivation(@Valid @RequestBody ActivationRequest request) {
+        log.info("POST /api/v1/auth/resend-activation: email={}", request.getEmail());
+        authenticationService.resendActivationEmail(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.<String>builder()
+                .code(1000)
+                .message("Email kích hoạt mới đã được gửi. Vui lòng kiểm tra hộp thư (bao gồm thư rác).")
+                .result("Email kích hoạt đã được gửi.")
                 .build());
     }
 
