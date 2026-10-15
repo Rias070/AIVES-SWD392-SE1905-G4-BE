@@ -1,9 +1,11 @@
 package com.aives.service;
 
+import com.aives.application.port.out.NotificationPort;
+
 /**
  * Service gửi email thông báo cho hệ thống khảo thí AIVES.
  */
-public interface EmailService {
+public interface EmailService extends NotificationPort {
 
     /**
      * Gửi email chào mừng và xác nhận đăng ký tài khoản thành công cho Sinh viên hoặc Giảng viên.

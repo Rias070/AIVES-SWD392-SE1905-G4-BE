@@ -1,9 +1,9 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.LecturerQuestionUseCase;
 import com.aives.dto.request.QuestionRequest;
 import com.aives.dto.response.QuestionResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.LecturerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @Tag(name = "Lecturer - Question Bank Management", description = "Endpoints for managing question bank and Bloom taxonomy")
 public class LecturerQuestionController {
 
-    private final LecturerService lecturerService;
+    private final LecturerQuestionUseCase lecturerService;
 
     @GetMapping
     @Operation(summary = "List questions in bank with filters")

@@ -1,10 +1,10 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.AuthenticationUseCase;
 import com.aives.dto.request.AuthRequest;
 import com.aives.dto.request.UserCreateRequest;
 import com.aives.dto.response.AuthResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.AuthenticationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,8 +20,8 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "Authentication", description = "Public authentication and registration endpoints")
 public class AuthController {
 
-    private final AuthenticationService authenticationService;
-    private final com.aives.service.EmailService emailService;
+    private final AuthenticationUseCase authenticationService;
+    private final com.aives.application.port.out.NotificationPort emailService;
 
     @PostMapping("/login")
     @Operation(summary = "Login to system", description = "Authenticate with email and password to receive JWT Bearer token")

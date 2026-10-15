@@ -1,8 +1,8 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.StudentExamUseCase;
 import com.aives.dto.request.VivaTurnWsRequest;
 import com.aives.dto.response.VivaTurnWsResponse;
-import com.aives.service.StudentExamService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -18,7 +18,7 @@ import java.util.UUID;
 @Slf4j
 public class VivaWebSocketController {
 
-    private final StudentExamService studentExamService;
+    private final StudentExamUseCase studentExamService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @MessageMapping("/exam/{sessionId}/submit-turn")

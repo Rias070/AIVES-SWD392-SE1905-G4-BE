@@ -4,8 +4,8 @@ import com.aives.dto.request.ExamStartRequest;
 import com.aives.dto.request.VivaTurnSubmitRequest;
 import com.aives.dto.response.ExamSessionResponse;
 import com.aives.dto.response.VivaTurnResponse;
+import com.aives.application.port.in.StudentExamUseCase;
 import com.aives.response.ApiResponse;
-import com.aives.service.StudentExamService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -22,7 +22,7 @@ import java.util.UUID;
 @Tag(name = "Student - Exam Sessions & Viva", description = "Endpoints for student exam sessions, viva turns and AI evaluation")
 public class StudentExamController {
 
-    private final StudentExamService studentExamService;
+    private final StudentExamUseCase studentExamService;
 
     @GetMapping
     @Operation(summary = "List exam sessions for student")

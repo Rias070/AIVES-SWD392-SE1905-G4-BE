@@ -1,5 +1,6 @@
 package com.aives.service;
 
+import com.aives.application.port.in.AIVivaConfigUseCase;
 import com.aives.dto.response.AIVivaConfigDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -9,7 +10,7 @@ import java.util.Map;
 
 @Service
 @Slf4j
-public class AIVivaConfigService {
+public class AIVivaConfigService implements AIVivaConfigUseCase {
 
     private AIVivaConfigDto currentConfig = AIVivaConfigDto.builder()
             .defaultLanguage("vi-VN")

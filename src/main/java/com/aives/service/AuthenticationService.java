@@ -17,6 +17,8 @@ import com.nimbusds.jose.JWSObject;
 import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.aives.application.port.in.AuthenticationUseCase;
+import com.aives.application.port.in.UserManagementUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,10 +33,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AuthenticationService {
+public class AuthenticationService implements AuthenticationUseCase {
 
     private final UserRepository userRepository;
-    private final UserManagementService userManagementService;
+    private final UserManagementUseCase userManagementService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 

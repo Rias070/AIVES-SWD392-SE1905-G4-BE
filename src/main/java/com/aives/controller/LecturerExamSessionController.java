@@ -1,9 +1,9 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.StudentExamUseCase;
 import com.aives.dto.request.LecturerFinalizeScoreRequest;
 import com.aives.dto.response.ExamSessionResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.StudentExamService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @Tag(name = "Lecturer - Exam Sessions & Score Finalization", description = "Endpoints for lecturer review, grading override and score finalize")
 public class LecturerExamSessionController {
 
-    private final StudentExamService studentExamService;
+    private final StudentExamUseCase studentExamService;
 
     @PostMapping("/{sessionId}/finalize-score")
     @Operation(summary = "Finalize and override score for an exam session")

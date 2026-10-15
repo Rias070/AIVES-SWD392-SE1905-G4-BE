@@ -17,8 +17,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import com.aives.application.port.in.LecturerDocumentUseCase;
+import com.aives.application.port.in.LecturerQuestionUseCase;
+import com.aives.application.port.in.LecturerRubricUseCase;
+import com.aives.application.port.out.LLMProviderPort;
+import com.aives.application.port.out.VectorEmbeddingPort;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -30,19 +34,15 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class LecturerService {
+public class LecturerService implements LecturerDocumentUseCase, LecturerQuestionUseCase, LecturerRubricUseCase {
 
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final QuestionRepository questionRepository;
     private final RubricRepository rubricRepository;
     private final SubjectRepository subjectRepository;
-
-    @Value("${gemini.api.key:dummy_key}")
-    private String geminiApiKey;
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final LLMProviderPort llmProviderPort;
+    private final VectorEmbeddingPort vectorEmbeddingPort;
 
     // ==========================================
     // 1. RAG DOCUMENTS MANAGEMENT (INGESTION & VECTORIZATION)
@@ -120,7 +120,7 @@ public class LecturerService {
         List<DocumentChunk> chunkEntities = new ArrayList<>();
         for (int i = 0; i < rawChunks.size(); i++) {
             String chunkContent = rawChunks.get(i);
-            String vectorEmbedding = generateDeterministicVector(chunkContent);
+            String vectorEmbedding = vectorEmbeddingPort.generateEmbeddingVector(chunkContent);
 
             DocumentChunk chunk = DocumentChunk.builder()
                     .document(doc)
@@ -199,7 +199,7 @@ public class LecturerService {
         String topic = request.getTopic() != null && !request.getTopic().isBlank() ? request.getTopic().trim() : "Trọng tâm kiến thức môn học";
         String requestedBloom = request.getBloomLevel() != null ? request.getBloomLevel() : "ALL";
 
-        List<Map<String, Object>> generatedItems = generateQuestionsFromGeminiOrFallback(subject, topic, requestedBloom, count, ragContext);
+        List<Map<String, Object>> generatedItems = llmProviderPort.generateQuestionsFromSyllabus(subject, topic, requestedBloom, count, ragContext);
 
         List<QuestionResponse> results = new ArrayList<>();
         for (int i = 0; i < generatedItems.size(); i++) {
@@ -231,7 +231,7 @@ public class LecturerService {
                     .expectedAnswer(expectedAnswer)
                     .keywords(keywordsStr)
                     .status("PENDING") // Pending review
-                    .embedding(generateDeterministicVector(content))
+                    .embedding(vectorEmbeddingPort.generateEmbeddingVector(content))
                     .build();
 
             q = questionRepository.save(q);
@@ -289,238 +289,6 @@ public class LecturerService {
 
         log.info("Generated {} RAG questions for subject {} (topic: {})", results.size(), subject.getCode(), topic);
         return results;
-    }
-
-    private List<Map<String, Object>> generateQuestionsFromGeminiOrFallback(
-            Subject subject, String topic, String bloomLevel, int count, String ragContext) {
-
-        if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
-            try {
-                String prompt = "You are a Senior Academic Examiner and Professor designing oral examination (viva) questions for course " +
-                        subject.getCode() + " (" + subject.getName() + ").\n" +
-                        "Language: Vietnamese (vi-VN).\n" +
-                        "Topic: " + topic + "\n" +
-                        "Target Bloom Level: " + bloomLevel + "\n" +
-                        "Required Question Count: " + count + "\n\n" +
-                        "Syllabus Context (RAG):\n" + ragContext + "\n\n" +
-                        "Task: Generate exactly " + count + " viva questions based strictly on the syllabus context above.\n" +
-                        "Return ONLY valid JSON Array (no Markdown ticks, no other text):\n" +
-                        "[\n" +
-                        "  {\n" +
-                        "    \"content\": \"Câu hỏi vấn đáp chi tiết...\",\n" +
-                        "    \"bloomLevel\": \"Bloom 2 - Hiểu\",\n" +
-                        "    \"difficulty\": \"MEDIUM\",\n" +
-                        "    \"expectedAnswer\": \"Các luận điểm cốt lõi thí sinh cần nêu...\",\n" +
-                        "    \"keywords\": [\"Từ khóa 1\", \"Từ khóa 2\"],\n" +
-                        "    \"rubrics\": [\n" +
-                        "      {\"criterionName\": \"Nắm vững định nghĩa\", \"maxScore\": 3.0, \"weight\": 30.0, \"description\": \"Trình bày đúng khái niệm cơ bản\"},\n" +
-                        "      {\"criterionName\": \"Phân tích cơ chế\", \"maxScore\": 4.0, \"weight\": 40.0, \"description\": \"Giải thích nguyên lý và so sánh\"},\n" +
-                        "      {\"criterionName\": \"Liên hệ thực tế\", \"maxScore\": 3.0, \"weight\": 30.0, \"description\": \"Ứng dụng vào bài toán thực tiễn\"}\n" +
-                        "    ]\n" +
-                        "  }\n" +
-                        "]";
-
-                Map<String, Object> part = Map.of("text", prompt);
-                Map<String, Object> contentObj = Map.of("parts", List.of(part));
-                Map<String, Object> body = Map.of("contents", List.of(contentObj));
-
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
-                Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
-
-                if (response != null && response.containsKey("candidates")) {
-                    List<?> candidates = (List<?>) response.get("candidates");
-                    if (!candidates.isEmpty()) {
-                        Map<?, ?> candidate = (Map<?, ?>) candidates.get(0);
-                        Map<?, ?> content = (Map<?, ?>) candidate.get("content");
-                        List<?> parts = (List<?>) content.get("parts");
-                        if (!parts.isEmpty()) {
-                            Map<?, ?> textPart = (Map<?, ?>) parts.get(0);
-                            String rawText = (String) textPart.get("text");
-                            List<Map<String, Object>> parsed = parseGeminiQuestionJson(rawText);
-                            if (parsed != null && !parsed.isEmpty()) {
-                                return parsed;
-                            }
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Gemini question generation API call failed, using high-quality Domain Fallback Generator: {}", e.getMessage());
-            }
-        }
-
-        return generateDomainFallbackQuestions(subject, topic, bloomLevel, count);
-    }
-
-    private List<Map<String, Object>> parseGeminiQuestionJson(String rawText) {
-        try {
-            String clean = rawText.trim();
-            if (clean.startsWith("```json")) {
-                clean = clean.substring(7);
-            } else if (clean.startsWith("```")) {
-                clean = clean.substring(3);
-            }
-            if (clean.endsWith("```")) {
-                clean = clean.substring(0, clean.length() - 3);
-            }
-            clean = clean.trim();
-
-            JsonNode root = objectMapper.readTree(clean);
-            if (root.isArray()) {
-                List<Map<String, Object>> items = new ArrayList<>();
-                for (JsonNode node : root) {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("content", node.has("content") ? node.get("content").asText() : "");
-                    item.put("bloomLevel", node.has("bloomLevel") ? node.get("bloomLevel").asText() : "Bloom 3 - Vận dụng");
-                    item.put("difficulty", node.has("difficulty") ? node.get("difficulty").asText() : "MEDIUM");
-                    item.put("expectedAnswer", node.has("expectedAnswer") ? node.get("expectedAnswer").asText() : "");
-
-                    List<String> kw = new ArrayList<>();
-                    if (node.has("keywords") && node.get("keywords").isArray()) {
-                        for (JsonNode k : node.get("keywords")) kw.add(k.asText());
-                    }
-                    item.put("keywords", kw);
-
-                    List<Map<String, Object>> rubrics = new ArrayList<>();
-                    if (node.has("rubrics") && node.get("rubrics").isArray()) {
-                        for (JsonNode r : node.get("rubrics")) {
-                            Map<String, Object> rMap = new HashMap<>();
-                            rMap.put("criterionName", r.has("criterionName") ? r.get("criterionName").asText() : "Tiêu chí");
-                            rMap.put("maxScore", r.has("maxScore") ? r.get("maxScore").asDouble() : 10.0);
-                            rMap.put("weight", r.has("weight") ? r.get("weight").asDouble() : 30.0);
-                            rMap.put("description", r.has("description") ? r.get("description").asText() : "");
-                            rubrics.add(rMap);
-                        }
-                    }
-                    item.put("rubrics", rubrics);
-                    items.add(item);
-                }
-                return items;
-            }
-        } catch (Exception e) {
-            log.warn("Could not parse Gemini JSON output: {}", e.getMessage());
-        }
-        return Collections.emptyList();
-    }
-
-    private List<Map<String, Object>> generateDomainFallbackQuestions(
-            Subject subject, String topic, String bloomLevel, int count) {
-        String code = subject.getCode().toUpperCase();
-
-        List<Map<String, Object>> pool = new ArrayList<>();
-
-        if (code.contains("CS") || code.contains("ALGO") || code.contains("201") || code.contains("301")) {
-            pool.add(createQuestionItem(
-                    "Trình bày nguyên lý hoạt động của giải thuật Dijkstra. Tại sao giải thuật này không cho kết quả chính xác trên đồ thị có trọng số âm, và giải pháp thay thế là gì?",
-                    "Bloom 4 - Phân tích", "HARD",
-                    "Dijkstra hoạt động theo cơ chế Greedy, dựa trên giả định trọng số cung không âm. Khi có chu trình hoặc cung âm, nhãn đỉnh đã đóng có thể bị cải thiện sau đó. Giải pháp: Bellman-Ford hoặc SPFA.",
-                    List.of("Dijkstra", "Greedy", "Trọng số âm", "Bellman-Ford"),
-                    List.of(
-                            Map.of("criterionName", "Nắm vững nguyên lý Greedy của Dijkstra", "maxScore", 3.0, "weight", 30.0, "description", "Giải thích cách cập nhật nhãn đỉnh và điều kiện dừng"),
-                            Map.of("criterionName", "Phân tích phản ví dụ trọng số âm", "maxScore", 4.0, "weight", 40.0, "description", "Chỉ rõ tại sao giả định Greedy bị vi phạm khi có cung âm"),
-                            Map.of("criterionName", "So sánh với giải thuật Bellman-Ford", "maxScore", 3.0, "weight", 30.0, "description", "Nêu độ phức tạp O(V*E) và cơ chế phát hiện chu trình âm")
-                    )
-            ));
-            pool.add(createQuestionItem(
-                    "So sánh cấu trúc cây AVL và cây Đỏ-Đen (Red-Black Tree). Khi nào nên ưu tiên sử dụng cây AVL thay vì cây Đỏ-Đen trong ứng dụng thực tế?",
-                    "Bloom 3 - Vận dụng", "MEDIUM",
-                    "AVL cân bằng chặt chẽ hơn (chênh lệch chiều cao <= 1), tìm kiếm nhanh hơn O(log n). Red-Black cân bằng lỏng hơn, số phép xoay khi chèn/xóa ít hơn. Ứng dụng tra cứu nhiều -> AVL; chèn/xóa liên tục -> Red-Black.",
-                    List.of("AVL Tree", "Red-Black Tree", "Rotation", "Cân bằng cây"),
-                    List.of(
-                            Map.of("criterionName", "Khái niệm và điều kiện cân bằng", "maxScore", 3.0, "weight", 30.0, "description", "Phân biệt hệ số cân bằng AVL và tính chất tô màu Red-Black"),
-                            Map.of("criterionName", "So sánh chi phí phép xoay (Rotations)", "maxScore", 4.0, "weight", 40.0, "description", "Chỉ ra số phép xoay tối đa khi insert và delete"),
-                            Map.of("criterionName", "Liên hệ kịch bản sử dụng thực tế", "maxScore", 3.0, "weight", 30.0, "description", "Lựa chọn cấu trúc dữ liệu phù hợp với bài toán read-heavy vs write-heavy")
-                    )
-            ));
-            pool.add(createQuestionItem(
-                    "Phân tích cơ chế giải quyết xung đột trong Bảng băm (Hash Table): So sánh Chaining (Dây chuyền) và Open Addressing (Thăm dò tuyến tính).",
-                    "Bloom 2 - Hiểu", "EASY",
-                    "Chaining sử dụng danh sách liên kết tại mỗi bucket, chịu tải tốt khi load factor > 1. Open Addressing lưu trực tiếp trong mảng, tiết kiệm con trỏ nhưng dễ xảy ra hiện tượng dồn cụm (clustering).",
-                    List.of("Hash Table", "Chaining", "Linear Probing", "Load Factor"),
-                    List.of(
-                            Map.of("criterionName", "Định nghĩa hàm băm và xung đột", "maxScore", 3.0, "weight", 30.0, "description", "Nêu khái niệm collision và nguyên nhân xảy ra"),
-                            Map.of("criterionName", "Cơ chế Chaining và Open Addressing", "maxScore", 4.0, "weight", 40.0, "description", "Giải thích cách xử lý khi 2 key băm vào cùng 1 bucket"),
-                            Map.of("criterionName", "Đánh giá hiệu năng và Load Factor", "maxScore", 3.0, "weight", 30.0, "description", "Phân tích tác động của hệ số tải đến thời gian truy xuất O(1)")
-                    )
-            ));
-        } else if (code.contains("SWD") || code.contains("PRN") || code.contains("PRJ") || code.contains("WEB")) {
-            pool.add(createQuestionItem(
-                    "Trình bày vòng đời của một HTTP Session trong ứng dụng web Java. Khi triển khai hệ thống phân tán (Distributed System), làm thế nào để duy trì phiên làm việc nhất quán?",
-                    "Bloom 3 - Vận dụng", "MEDIUM",
-                    "Session được tạo khi request đầu tiên tới, lưu trong RAM server qua JSESSIONID cookie. Trong hệ thống phân tán: Sử dụng Sticky Session (Load Balancer), Session Replication, hoặc Centralized Session Store (Redis/Memcached).",
-                    List.of("HttpSession", "JSESSIONID", "Distributed Session", "Redis"),
-                    List.of(
-                            Map.of("criterionName", "Vòng đời HttpSession cơ bản", "maxScore", 3.0, "weight", 30.0, "description", "Mô tả cơ chế tạo, timeout, invalidate và cookie trao đổi"),
-                            Map.of("criterionName", "Thách thức trong kiến trúc đa máy chủ", "maxScore", 4.0, "weight", 40.0, "description", "Chỉ rõ nhược điểm khi lưu session trong RAM máy đơn lẻ"),
-                            Map.of("criterionName", "Giải pháp Redis Session Store", "maxScore", 3.0, "weight", 30.0, "description", "Trình bày cách Spring Session tích hợp Redis để đồng bộ trạng thái")
-                    )
-            ));
-            pool.add(createQuestionItem(
-                    "Phân tích nguyên lý Inversion of Control (IoC) và Dependency Injection (DI) trong Spring Framework. So sánh Constructor Injection và Field Injection.",
-                    "Bloom 2 - Hiểu", "EASY",
-                    "IoC chuyển quyền điều khiển khởi tạo đối tượng cho Spring Container. DI là cách thức cung cấp dependency. Constructor Injection hỗ trợ immutability, dễ test, tránh NPE; Field Injection gọn nhưng ẩn phụ thuộc, khó unit test.",
-                    List.of("IoC", "Dependency Injection", "Constructor Injection", "Spring Bean"),
-                    List.of(
-                            Map.of("criterionName", "Bản chất nguyên lý IoC & DI", "maxScore", 3.0, "weight", 30.0, "description", "Giải thích sự khác biệt giữa tạo object bằng 'new' và Spring Bean"),
-                            Map.of("criterionName", "So sánh các hình thức Injection", "maxScore", 4.0, "weight", 40.0, "description", "Nêu ưu nhược điểm của Constructor, Setter và Field Injection"),
-                            Map.of("criterionName", "Khả năng viết Unit Test độc lập", "maxScore", 3.0, "weight", 30.0, "description", "Chứng minh Constructor Injection giúp mock dependency dễ dàng")
-                    )
-            ));
-            pool.add(createQuestionItem(
-                    "Thiết kế kiến trúc hệ thống áp dụng mẫu Microservices: Làm thế nào để đảm bảo tính nhất quán dữ liệu qua các dịch vụ độc lập mà không dùng Two-Phase Commit (2PC)?",
-                    "Bloom 4 - Phân tích", "HARD",
-                    "2PC gây thắt cổ chai hiệu năng và khóa tài nguyên. Giải pháp: Áp dụng Saga Pattern (Orchestration hoặc Choreography) kết hợp Eventual Consistency và Outbox Pattern qua Message Broker (Kafka/RabbitMQ).",
-                    List.of("Microservices", "Saga Pattern", "Eventual Consistency", "Kafka"),
-                    List.of(
-                            Map.of("criterionName", "Hạn chế của Two-Phase Commit (2PC)", "maxScore", 3.0, "weight", 30.0, "description", "Chỉ ra nhược điểm về độ trễ và khả năng mở rộng của 2PC"),
-                            Map.of("criterionName", "Mô hình Saga Pattern", "maxScore", 4.0, "weight", 40.0, "description", "Giải thích cách xử lý giao dịch bù (Compensating Transaction)"),
-                            Map.of("criterionName", "Đảm bảo tính nhất quán cuối cùng", "maxScore", 3.0, "weight", 30.0, "description", "Trình bày cơ chế Event-driven và Idempotency khi nhận tin nhắn")
-                    )
-            ));
-        } else {
-            // General Course questions
-            pool.add(createQuestionItem(
-                    "Trình bày các nguyên lý cơ bản của học phần " + subject.getCode() + " liên quan đến chủ đề: " + topic + ". Đưa ra ví dụ minh họa cụ thể.",
-                    "Bloom 2 - Hiểu", "MEDIUM",
-                    "Thí sinh cần nắm vững cơ sở lý thuyết, định nghĩa chuẩn mực và liên hệ trực tiếp với bài tập thực hành môn học.",
-                    List.of(subject.getCode(), "Core Concept", "Application"),
-                    List.of(
-                            Map.of("criterionName", "Khái niệm lý thuyết cốt lõi", "maxScore", 4.0, "weight", 40.0, "description", "Trình bày đầy đủ và chính xác các nguyên lý nền tảng"),
-                            Map.of("criterionName", "Phân tích và minh họa", "maxScore", 3.0, "weight", 30.0, "description", "Đưa ra ví dụ thực tế liên quan trực tiếp đến đề cương"),
-                            Map.of("criterionName", "Kỹ năng lập luận phản biện", "maxScore", 3.0, "weight", 30.0, "description", "Trả lời rõ ràng, lưu loát và bảo vệ được quan điểm")
-                    )
-            ));
-            pool.add(createQuestionItem(
-                    "Phân tích ưu điểm và hạn chế của các phương pháp tiếp cận chính trong học phần " + subject.getCode() + ". Trong tình huống nào phương pháp này tối ưu hơn?",
-                    "Bloom 4 - Phân tích", "HARD",
-                    "Thí sinh so sánh hai trường phái tiếp cận, nêu điều kiện ràng buộc và đánh giá chi phí triển khai.",
-                    List.of(subject.getCode(), "Analysis", "Optimization"),
-                    List.of(
-                            Map.of("criterionName", "So sánh các phương pháp", "maxScore", 4.0, "weight", 40.0, "description", "Nêu rõ ưu nhược điểm của từng cách tiếp cận"),
-                            Map.of("criterionName", "Đánh giá điều kiện áp dụng", "maxScore", 3.0, "weight", 30.0, "description", "Chỉ ra kịch bản tối ưu nhất"),
-                            Map.of("criterionName", "Tổng kết và bảo vệ luận điểm", "maxScore", 3.0, "weight", 30.0, "description", "Lập luận thuyết phục theo barem chuẩn")
-                    )
-            ));
-        }
-
-        // Limit to requested count
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            Map<String, Object> chosen = pool.get(i % pool.size());
-            result.add(chosen);
-        }
-        return result;
-    }
-
-    private Map<String, Object> createQuestionItem(
-            String content, String bloom, String difficulty, String answer, List<String> kw, List<Map<String, Object>> rubrics) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("content", content);
-        m.put("bloomLevel", bloom);
-        m.put("difficulty", difficulty);
-        m.put("expectedAnswer", answer);
-        m.put("keywords", kw);
-        m.put("rubrics", rubrics);
-        return m;
     }
 
     // ==========================================
@@ -585,7 +353,7 @@ public class LecturerService {
                 .expectedAnswer(request.getExpectedAnswer())
                 .keywords(request.getKeywords())
                 .status(request.getStatus() != null ? request.getStatus().toUpperCase() : "ACTIVE")
-                .embedding(generateDeterministicVector(request.getContent()))
+                .embedding(vectorEmbeddingPort.generateEmbeddingVector(request.getContent()))
                 .build();
 
         q = questionRepository.save(q);
@@ -821,7 +589,7 @@ public class LecturerService {
                     .document(doc)
                     .chunkIndex(i + 1)
                     .chunkContent(content)
-                    .embedding(generateDeterministicVector(content))
+                    .embedding(vectorEmbeddingPort.generateEmbeddingVector(content))
                     .build());
         }
         return documentChunkRepository.saveAll(entities);
@@ -870,28 +638,6 @@ public class LecturerService {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
         return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
-    }
-
-    private String generateDeterministicVector(String text) {
-        // Generate valid 1536-dimensional normalized vector for pgvector
-        float[] vector = new float[1536];
-        int hash = text != null ? text.hashCode() : 42;
-        Random rng = new Random(hash);
-        float norm = 0f;
-        for (int i = 0; i < 1536; i++) {
-            vector[i] = (float) (rng.nextGaussian() * 0.1);
-            norm += vector[i] * vector[i];
-        }
-        norm = (float) Math.sqrt(norm);
-        if (norm == 0f) norm = 1f;
-
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < 1536; i++) {
-            sb.append(String.format(Locale.US, "%.5f", vector[i] / norm));
-            if (i < 1535) sb.append(",");
-        }
-        sb.append("]");
-        return sb.toString();
     }
 
     private DocumentResponse mapToDocResponse(Document doc) {

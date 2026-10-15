@@ -1,9 +1,9 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.LecturerDocumentUseCase;
 import com.aives.dto.request.DocumentUploadRequest;
 import com.aives.dto.response.DocumentResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.LecturerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @Tag(name = "Lecturer - Document & RAG Management", description = "Endpoints for syllabus upload, chunking and vector indexing")
 public class LecturerDocumentController {
 
-    private final LecturerService lecturerService;
+    private final LecturerDocumentUseCase lecturerService;
 
     @GetMapping
     @Operation(summary = "Get syllabus documents for RAG retrieval")
