@@ -11,14 +11,15 @@ import com.aives.exception.AppException;
 import com.aives.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.aives.application.port.in.StudentExamUseCase;
+import com.aives.application.port.out.LLMProviderPort;
+import com.aives.dto.response.VivaEvaluationResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.aives.dto.request.LecturerFinalizeScoreRequest;
 import com.aives.dto.request.VivaTurnWsRequest;
 import com.aives.dto.response.VivaTurnWsResponse;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -29,7 +30,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class StudentExamService {
+public class StudentExamService implements StudentExamUseCase {
 
     private final ExamSessionRepository examSessionRepository;
     private final VivaTurnRepository vivaTurnRepository;
@@ -38,10 +39,7 @@ public class StudentExamService {
     private final QuestionRepository questionRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final RubricRepository rubricRepository;
-    private final RestTemplate restTemplate;
-
-    @Value("${gemini.api.key:dummy_key}")
-    private String geminiApiKey;
+    private final LLMProviderPort llmProviderPort;
 
     public List<ExamSessionResponse> getStudentSessions(UUID studentId) {
         List<ExamSession> sessions;
@@ -285,7 +283,7 @@ public class StudentExamService {
         int turnOrder = request.getTurnOrder() != null ? request.getTurnOrder() : 1;
         String lang = request.getExamLang() != null ? request.getExamLang() : "vi-VN";
 
-        VivaEvaluationResult evalResult = evaluateVivaWithGeminiOrFallback(
+        VivaEvaluationResult evalResult = llmProviderPort.evaluateVivaTurn(
                 subjectCode,
                 turnOrder,
                 request.getQuestionContent(),
@@ -363,143 +361,5 @@ public class StudentExamService {
 
         session = examSessionRepository.save(session);
         return mapToSessionResponse(session);
-    }
-
-    private VivaEvaluationResult evaluateVivaWithGeminiOrFallback(
-            String subjectCode,
-            int turnOrder,
-            String currentQuestion,
-            String transcript,
-            List<String> ragSnippets,
-            List<Rubric> rubrics,
-            String lang) {
-
-        // Try Gemini 1.5/2.0 API if key is valid
-        if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
-            try {
-                StringBuilder rubricStr = new StringBuilder();
-                if (rubrics != null && !rubrics.isEmpty()) {
-                    for (Rubric r : rubrics) {
-                        rubricStr.append("- ").append(r.getCriterionName())
-                                .append(" (").append(r.getWeight() != null ? r.getWeight() : 20).append("%): ")
-                                .append(r.getDescription() != null ? r.getDescription() : "").append("\n");
-                    }
-                }
-                String prompt = "You are an expert AI oral examiner for course " + subjectCode + ".\n" +
-                        "Language: " + lang + "\n" +
-                        "Current Question: " + currentQuestion + "\n" +
-                        "Student Answer: " + transcript + "\n" +
-                        "Syllabus Context (RAG): " + String.join(" | ", ragSnippets) + "\n" +
-                        "Rubric Criteria:\n" + (rubricStr.length() > 0 ? rubricStr.toString() : "Standard Viva Rubric") + "\n" +
-                        "Task: Evaluate answer on 0.0-10.0 scale based on rubrics, write a 1-sentence assessment, and generate an adaptive follow-up question (Bloom 4-5) to probe deeper. Format as:\n" +
-                        "SCORE: <number>\nEVAL: <text>\nFOLLOWUP: <text>\nBLOOM: <text>";
-
-                Map<String, Object> part = Map.of("text", prompt);
-                Map<String, Object> contentObj = Map.of("parts", List.of(part));
-                Map<String, Object> body = Map.of("contents", List.of(contentObj));
-
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
-                Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
-                if (response != null && response.containsKey("candidates")) {
-                    List<?> candidates = (List<?>) response.get("candidates");
-                    if (!candidates.isEmpty()) {
-                        Map<?, ?> candidate = (Map<?, ?>) candidates.get(0);
-                        Map<?, ?> content = (Map<?, ?>) candidate.get("content");
-                        List<?> parts = (List<?>) content.get("parts");
-                        if (!parts.isEmpty()) {
-                            Map<?, ?> textPart = (Map<?, ?>) parts.get(0);
-                            String aiRawText = (String) textPart.get("text");
-                            return parseGeminiOutput(aiRawText, turnOrder, subjectCode, lang);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Gemini API call failed or timed out, activating adaptive domain reasoning engine: {}", e.getMessage());
-            }
-        }
-
-        // Intelligent Domain Fallback Engine
-        return computeDomainEvaluation(subjectCode, turnOrder, transcript, lang);
-    }
-
-    private VivaEvaluationResult parseGeminiOutput(String raw, int turnOrder, String subjectCode, String lang) {
-        BigDecimal score = BigDecimal.valueOf(8.25);
-        String eval = "Luận điểm trình bày mạch lạc, đối chiếu chuẩn xác với đề cương giáo trình.";
-        String followup = "Hãy giải thích thêm về trường hợp biên và cách tối ưu hóa giải thuật khi quy mô dữ liệu tăng gấp 10 lần?";
-        String bloom = "Bloom 5 - Đánh giá phản biện";
-
-        try {
-            for (String line : raw.split("\n")) {
-                line = line.trim();
-                if (line.startsWith("SCORE:")) {
-                    String num = line.substring(6).replaceAll("[^0-9.]", "").trim();
-                    if (!num.isEmpty()) {
-                        score = BigDecimal.valueOf(Double.parseDouble(num)).setScale(2, RoundingMode.HALF_UP);
-                    }
-                } else if (line.startsWith("EVAL:")) {
-                    eval = line.substring(5).trim();
-                } else if (line.startsWith("FOLLOWUP:")) {
-                    followup = line.substring(9).trim();
-                } else if (line.startsWith("BLOOM:")) {
-                    bloom = line.substring(6).trim();
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Error parsing Gemini output: {}", e.getMessage());
-        }
-        return new VivaEvaluationResult(score, eval, followup, bloom);
-    }
-
-    private VivaEvaluationResult computeDomainEvaluation(String subjectCode, int turnOrder, String transcript, String lang) {
-        String lower = transcript.toLowerCase();
-        double baseScore = 8.0;
-        if (lower.contains("dijkstra") || lower.contains("bellman") || lower.contains("microservice") || lower.contains("bias")) {
-            baseScore += 0.5;
-        }
-        if (lower.length() > 80) {
-            baseScore += 0.25;
-        }
-        baseScore = Math.min(9.5, baseScore);
-        BigDecimal score = BigDecimal.valueOf(baseScore).setScale(2, RoundingMode.HALF_UP);
-
-        String eval = "Thí sinh nắm chắc bản chất lý thuyết, phân tích đúng cơ chế giải thuật và đối chiếu khớp với chuẩn Rubric.";
-        String followup;
-        String bloom;
-
-        if (turnOrder == 1) {
-            followup = "Bạn vừa nhắc đến bản chất tham lam và chu trình âm. Vậy thuật toán Bellman-Ford làm thế nào để phát hiện được sự tồn tại của chu trình âm trong đồ thị? Số lần duyệt tối đa là bao nhiêu và tại sao?";
-            bloom = "Bloom 5 - Đánh giá phản biện";
-        } else if (turnOrder == 2) {
-            followup = "Về mặt tối ưu hóa cấu trúc dữ liệu, tại sao việc dùng Fibonacci Heap lại tối ưu hơn Binary Heap trong Dijkstra? Thao tác Decrease-Key giảm độ phức tạp từ bao nhiêu xuống bao nhiêu?";
-            bloom = "Bloom 4 - Phân tích cấu trúc dữ liệu";
-        } else {
-            followup = "Ca thi đã hoàn thành 3 lượt vấn đáp thích ứng. Hệ thống AI đã tổng hợp toàn bộ transcript và đề xuất điểm để Giảng viên chốt điểm chính thức.";
-            bloom = "Bloom 6 - Sáng tạo & Tổng hợp";
-        }
-
-        if ("en-US".equalsIgnoreCase(lang)) {
-            eval = "The candidate demonstrated solid theoretical understanding, coherent arguments, and appropriate domain terminology.";
-            if (turnOrder == 1) {
-                followup = "You mentioned greedy choice and negative cycles. How does Bellman-Ford systematically detect negative weight cycles through V - 1 edge relaxations?";
-            } else if (turnOrder == 2) {
-                followup = "In terms of heap optimization, why is Fibonacci Heap theoretically superior to Binary Heap for Decrease-Key in Dijkstra?";
-            }
-        }
-
-        return new VivaEvaluationResult(score, eval, followup, bloom);
-    }
-
-    private static class VivaEvaluationResult {
-        final BigDecimal score;
-        final String aiEvaluation;
-        final String followupQuestion;
-        final String bloomLevel;
-
-        VivaEvaluationResult(BigDecimal score, String aiEvaluation, String followupQuestion, String bloomLevel) {
-            this.score = score;
-            this.aiEvaluation = aiEvaluation;
-            this.followupQuestion = followupQuestion;
-            this.bloomLevel = bloomLevel;
-        }
     }
 }

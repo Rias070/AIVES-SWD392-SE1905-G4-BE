@@ -1,12 +1,12 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.SubjectUseCase;
 import com.aives.dto.request.AssignmentPermissionRequest;
 import com.aives.dto.request.SubjectAssignRequest;
 import com.aives.dto.request.SubjectRequest;
 import com.aives.dto.response.SubjectAssignmentResponse;
 import com.aives.dto.response.SubjectResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.SubjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,7 +25,7 @@ import java.util.UUID;
 @Tag(name = "Admin - Subject Management", description = "Endpoints for managing subjects and lecturer assignments")
 public class AdminSubjectController {
 
-    private final SubjectService subjectService;
+    private final SubjectUseCase subjectService;
 
     // ==========================================
     // SUBJECTS CRUD

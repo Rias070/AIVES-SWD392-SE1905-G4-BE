@@ -1,8 +1,8 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.AIVivaConfigUseCase;
 import com.aives.dto.response.AIVivaConfigDto;
 import com.aives.response.ApiResponse;
-import com.aives.service.AIVivaConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +17,7 @@ import java.util.Map;
 @Tag(name = "Admin - AI Viva Configuration", description = "Endpoints for managing AI viva parameters, STT and TTS models")
 public class AdminConfigController {
 
-    private final AIVivaConfigService aiVivaConfigService;
+    private final AIVivaConfigUseCase aiVivaConfigService;
 
     @GetMapping("/ai-viva")
     @Operation(summary = "Get current AI Viva configuration")

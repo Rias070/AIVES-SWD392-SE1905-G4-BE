@@ -1,9 +1,9 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.LecturerRubricUseCase;
 import com.aives.dto.request.RubricRequest;
 import com.aives.dto.response.RubricResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.LecturerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @Tag(name = "Lecturer - Rubrics Management", description = "Endpoints for managing evaluation rubrics")
 public class LecturerRubricController {
 
-    private final LecturerService lecturerService;
+    private final LecturerRubricUseCase lecturerService;
 
     @GetMapping("/by-subject/{subjectId}")
     @Operation(summary = "Get rubrics for a specific subject")

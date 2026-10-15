@@ -1,9 +1,9 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.SubjectUseCase;
 import com.aives.dto.request.SubjectLanguageConfigDto;
 import com.aives.dto.response.SubjectResponse;
 import com.aives.response.ApiResponse;
-import com.aives.service.SubjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,7 +20,7 @@ import java.util.UUID;
 @Tag(name = "Subjects - Public/Catalog & Examination Config", description = "Endpoints for subject catalog and examination language configuration")
 public class SubjectController {
 
-    private final SubjectService subjectService;
+    private final SubjectUseCase subjectService;
 
     @GetMapping
     @Operation(summary = "Get list of active subjects")

@@ -16,6 +16,7 @@ import com.aives.repository.UserRepository;
 import com.aives.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.aives.application.port.in.UserManagementUseCase;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,7 +31,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class UserManagementService {
+public class UserManagementService implements UserManagementUseCase {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;

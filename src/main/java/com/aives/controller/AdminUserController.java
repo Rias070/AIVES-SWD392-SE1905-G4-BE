@@ -1,5 +1,6 @@
 package com.aives.controller;
 
+import com.aives.application.port.in.UserManagementUseCase;
 import com.aives.dto.request.RoleAssignRequest;
 import com.aives.dto.request.UserCreateRequest;
 import com.aives.dto.request.UserStatusUpdateRequest;
@@ -7,7 +8,6 @@ import com.aives.dto.request.UserUpdateRequest;
 import com.aives.dto.response.UserResponse;
 import com.aives.enums.UserStatus;
 import com.aives.response.ApiResponse;
-import com.aives.service.UserManagementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -31,8 +31,8 @@ import java.util.UUID;
 @Tag(name = "Admin - User Management", description = "CRUD endpoints for admin to manage user accounts and assign roles")
 public class AdminUserController {
 
-    private final UserManagementService userManagementService;
-    private final com.aives.service.EmailService emailService;
+    private final UserManagementUseCase userManagementService;
+    private final com.aives.application.port.out.NotificationPort emailService;
 
     @PostMapping
     @Operation(summary = "Create a new user account",
