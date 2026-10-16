@@ -8,4 +8,8 @@ public interface NotificationPort {
     void sendRegistrationWelcomeEmail(String toEmail, String fullName, String role, String userCode);
 
     void sendAccountCreationEmail(String toEmail, String fullName, String role, String userCode, String tempPassword);
+
+    void sendAccountActivationEmail(String toEmail, String fullName, String role, String activationLink);
+
+    void sendActivationSuccessEmail(String toEmail, String fullName, String role);
 }

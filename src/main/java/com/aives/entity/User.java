@@ -65,4 +65,7 @@ public class User {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    @Column(name = "activated_at")
+    private LocalDateTime activatedAt;
 }

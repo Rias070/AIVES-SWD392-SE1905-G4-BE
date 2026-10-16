@@ -22,6 +22,13 @@ public enum ErrorCode {
     TOKEN_EXPIRED(1009, "Token has expired", HttpStatus.UNAUTHORIZED),
     ACCOUNT_LOCKED(1010, "Account has been locked!", HttpStatus.FORBIDDEN),
     ACCOUNT_INACTIVE(1035, "Account is inactive!", HttpStatus.FORBIDDEN),
+
+    // === Lỗi Email Activation ===
+    ACCOUNT_NOT_ACTIVATED(1300, "Hãy kích hoạt tài khoản trong email đã đăng ký trước khi đăng nhập.", HttpStatus.FORBIDDEN),
+    ACCOUNT_ALREADY_ACTIVATED(1301, "Tài khoản đã được kích hoạt trước đó, bạn có thể đăng nhập ngay.", HttpStatus.OK),
+    ACTIVATION_TOKEN_INVALID(1302, "Liên kết kích hoạt không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu gửi lại email.", HttpStatus.BAD_REQUEST),
+    ACTIVATION_TOKEN_EXPIRED(1303, "Liên kết kích hoạt đã hết hạn (sau 24 giờ). Vui lòng yêu cầu gửi lại email.", HttpStatus.BAD_REQUEST),
+
     ROLE_NOT_FOUND(1040, "Role not found", HttpStatus.NOT_FOUND),
     EMAIL_SEND_FAILED(1012, "Failed to send email notification", HttpStatus.INTERNAL_SERVER_ERROR),
 
