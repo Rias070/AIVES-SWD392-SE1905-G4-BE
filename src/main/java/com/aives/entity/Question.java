@@ -2,6 +2,7 @@ package com.aives.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -48,6 +49,7 @@ public class Question {
      * Vector embedding representation for pgvector semantic search (RAG).
      */
     @Column(name = "embedding", columnDefinition = "vector")
+    @ColumnTransformer(read = "embedding::text", write = "?::vector")
     private String embedding;
 
     @Column(name = "status", length = 20)

@@ -2,6 +2,7 @@ package com.aives.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -34,6 +35,7 @@ public class DocumentChunk {
      * Vector embedding representation for pgvector semantic retrieval (RAG).
      */
     @Column(name = "embedding", columnDefinition = "vector")
+    @ColumnTransformer(read = "embedding::text", write = "?::vector")
     private String embedding;
 
     @CreationTimestamp
