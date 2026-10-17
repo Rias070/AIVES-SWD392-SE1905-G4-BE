@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.aives.application.port.out.NotificationPort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +24,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthenticationUseCase authenticationService;
-    private final com.aives.application.port.out.NotificationPort emailService;
+    private final NotificationPort emailService;
 
     @PostMapping("/login")
     @Operation(summary = "Login to system", description = "Authenticate with email and password to receive JWT Bearer token")

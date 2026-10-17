@@ -1,6 +1,7 @@
 package com.aives.controller;
 
 import com.aives.application.port.in.UserManagementUseCase;
+import com.aives.application.port.out.NotificationPort;
 import com.aives.dto.request.RoleAssignRequest;
 import com.aives.dto.request.UserCreateRequest;
 import com.aives.dto.request.UserStatusUpdateRequest;
@@ -32,7 +33,7 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final UserManagementUseCase userManagementService;
-    private final com.aives.application.port.out.NotificationPort emailService;
+    private final NotificationPort emailService;
 
     @PostMapping
     @Operation(summary = "Create a new user account",
