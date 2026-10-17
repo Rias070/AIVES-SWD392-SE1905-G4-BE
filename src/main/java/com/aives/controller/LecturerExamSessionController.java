@@ -7,7 +7,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +15,14 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping({"/api/v1/lecturer/exam-sessions", "/api/lecturer/exam-sessions"})
-@RequiredArgsConstructor
 @Tag(name = "Lecturer - Exam Sessions & Score Finalization", description = "Endpoints for lecturer review, grading override and score finalize")
 public class LecturerExamSessionController {
 
     private final StudentExamUseCase studentExamService;
+
+    public LecturerExamSessionController(StudentExamUseCase studentExamService) {
+        this.studentExamService = studentExamService;
+    }
 
     @PostMapping("/{sessionId}/finalize-score")
     @Operation(summary = "Finalize and override score for an exam session")

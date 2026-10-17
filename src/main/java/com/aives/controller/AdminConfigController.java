@@ -5,7 +5,6 @@ import com.aives.dto.response.AIVivaConfigDto;
 import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,11 +12,14 @@ import java.util.Map;
 
 @RestController
 @RequestMapping({"/api/v1/admin/config", "/api/admin/config"})
-@RequiredArgsConstructor
 @Tag(name = "Admin - AI Viva Configuration", description = "Endpoints for managing AI viva parameters, STT and TTS models")
 public class AdminConfigController {
 
     private final AIVivaConfigUseCase aiVivaConfigService;
+
+    public AdminConfigController(AIVivaConfigUseCase aiVivaConfigService) {
+        this.aiVivaConfigService = aiVivaConfigService;
+    }
 
     @GetMapping("/ai-viva")
     @Operation(summary = "Get current AI Viva configuration")

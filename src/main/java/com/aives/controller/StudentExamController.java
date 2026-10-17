@@ -9,7 +9,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,11 +17,14 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/student/exam-sessions")
-@RequiredArgsConstructor
 @Tag(name = "Student - Exam Sessions & Viva", description = "Endpoints for student exam sessions, viva turns and AI evaluation")
 public class StudentExamController {
 
     private final StudentExamUseCase studentExamService;
+
+    public StudentExamController(StudentExamUseCase studentExamService) {
+        this.studentExamService = studentExamService;
+    }
 
     @GetMapping
     @Operation(summary = "List exam sessions for student")

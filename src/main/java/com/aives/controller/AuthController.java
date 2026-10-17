@@ -10,7 +10,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.aives.application.port.out.NotificationPort;
 import org.springframework.http.ResponseEntity;
@@ -18,13 +17,17 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Authentication", description = "Public authentication and registration endpoints")
 public class AuthController {
 
     private final AuthenticationUseCase authenticationService;
     private final NotificationPort emailService;
+
+    public AuthController(AuthenticationUseCase authenticationService, NotificationPort emailService) {
+        this.authenticationService = authenticationService;
+        this.emailService = emailService;
+    }
 
     @PostMapping("/login")
     @Operation(summary = "Login to system", description = "Authenticate with email and password to receive JWT Bearer token")

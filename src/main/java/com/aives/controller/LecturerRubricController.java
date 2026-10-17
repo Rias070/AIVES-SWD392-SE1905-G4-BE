@@ -7,7 +7,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +15,14 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/lecturer/rubrics")
-@RequiredArgsConstructor
 @Tag(name = "Lecturer - Rubrics Management", description = "Endpoints for managing evaluation rubrics")
 public class LecturerRubricController {
 
     private final LecturerRubricUseCase lecturerService;
+
+    public LecturerRubricController(LecturerRubricUseCase lecturerService) {
+        this.lecturerService = lecturerService;
+    }
 
     @GetMapping("/by-subject/{subjectId}")
     @Operation(summary = "Get rubrics for a specific subject")

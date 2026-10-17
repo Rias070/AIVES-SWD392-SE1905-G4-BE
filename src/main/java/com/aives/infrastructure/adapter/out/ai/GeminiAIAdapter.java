@@ -7,7 +7,6 @@ import com.aives.entity.Rubric;
 import com.aives.entity.Subject;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -18,12 +17,15 @@ import java.math.RoundingMode;
 import java.util.*;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public GeminiAIAdapter(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
     @Value("${gemini.api.key:dummy_key}")
     private String geminiApiKey;

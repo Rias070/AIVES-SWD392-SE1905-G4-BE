@@ -9,7 +9,6 @@ import com.aives.enums.ErrorCode;
 import com.aives.enums.ExamSessionStatus;
 import com.aives.exception.AppException;
 import com.aives.repository.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.aives.application.port.in.StudentExamUseCase;
 import com.aives.application.port.out.LLMProviderPort;
@@ -28,7 +27,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class StudentExamService implements StudentExamUseCase {
 
@@ -40,6 +38,24 @@ public class StudentExamService implements StudentExamUseCase {
     private final DocumentChunkRepository documentChunkRepository;
     private final RubricRepository rubricRepository;
     private final LLMProviderPort llmProviderPort;
+
+    public StudentExamService(ExamSessionRepository examSessionRepository,
+                              VivaTurnRepository vivaTurnRepository,
+                              SubjectRepository subjectRepository,
+                              UserRepository userRepository,
+                              QuestionRepository questionRepository,
+                              DocumentChunkRepository documentChunkRepository,
+                              RubricRepository rubricRepository,
+                              LLMProviderPort llmProviderPort) {
+        this.examSessionRepository = examSessionRepository;
+        this.vivaTurnRepository = vivaTurnRepository;
+        this.subjectRepository = subjectRepository;
+        this.userRepository = userRepository;
+        this.questionRepository = questionRepository;
+        this.documentChunkRepository = documentChunkRepository;
+        this.rubricRepository = rubricRepository;
+        this.llmProviderPort = llmProviderPort;
+    }
 
     public List<ExamSessionResponse> getStudentSessions(UUID studentId) {
         List<ExamSession> sessions;

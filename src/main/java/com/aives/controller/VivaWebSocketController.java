@@ -3,7 +3,6 @@ package com.aives.controller;
 import com.aives.application.port.in.StudentExamUseCase;
 import com.aives.dto.request.VivaTurnWsRequest;
 import com.aives.dto.response.VivaTurnWsResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -14,12 +13,16 @@ import org.springframework.stereotype.Controller;
 import java.util.UUID;
 
 @Controller
-@RequiredArgsConstructor
 @Slf4j
 public class VivaWebSocketController {
 
     private final StudentExamUseCase studentExamService;
     private final SimpMessagingTemplate messagingTemplate;
+
+    public VivaWebSocketController(StudentExamUseCase studentExamService, SimpMessagingTemplate messagingTemplate) {
+        this.studentExamService = studentExamService;
+        this.messagingTemplate = messagingTemplate;
+    }
 
     @MessageMapping("/exam/{sessionId}/submit-turn")
     public void submitTurn(

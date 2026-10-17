@@ -7,7 +7,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +15,14 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/lecturer/documents")
-@RequiredArgsConstructor
 @Tag(name = "Lecturer - Document & RAG Management", description = "Endpoints for syllabus upload, chunking and vector indexing")
 public class LecturerDocumentController {
 
     private final LecturerDocumentUseCase lecturerService;
+
+    public LecturerDocumentController(LecturerDocumentUseCase lecturerService) {
+        this.lecturerService = lecturerService;
+    }
 
     @GetMapping
     @Operation(summary = "Get syllabus documents for RAG retrieval")

@@ -12,7 +12,6 @@ import com.aives.entity.User;
 import com.aives.enums.ErrorCode;
 import com.aives.exception.AppException;
 import com.aives.repository.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,7 +24,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class SubjectService implements SubjectUseCase {
 
@@ -34,6 +32,16 @@ public class SubjectService implements SubjectUseCase {
     private final UserRepository userRepository;
     private final QuestionRepository questionRepository;
     private final DocumentRepository documentRepository;
+
+    public SubjectService(SubjectRepository subjectRepository, SubjectLecturerRepository subjectLecturerRepository,
+                          UserRepository userRepository, QuestionRepository questionRepository,
+                          DocumentRepository documentRepository) {
+        this.subjectRepository = subjectRepository;
+        this.subjectLecturerRepository = subjectLecturerRepository;
+        this.userRepository = userRepository;
+        this.questionRepository = questionRepository;
+        this.documentRepository = documentRepository;
+    }
 
     public List<SubjectResponse> getAllSubjects() {
         return subjectRepository.findAll().stream()

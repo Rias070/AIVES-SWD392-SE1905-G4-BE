@@ -7,7 +7,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +15,14 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping({"/api/v1/subjects", "/api/subjects"})
-@RequiredArgsConstructor
 @Tag(name = "Subjects - Public/Catalog & Examination Config", description = "Endpoints for subject catalog and examination language configuration")
 public class SubjectController {
 
     private final SubjectUseCase subjectService;
+
+    public SubjectController(SubjectUseCase subjectService) {
+        this.subjectService = subjectService;
+    }
 
     @GetMapping
     @Operation(summary = "Get list of active subjects")

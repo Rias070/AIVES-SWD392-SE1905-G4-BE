@@ -22,7 +22,6 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.aives.application.port.in.AuthenticationUseCase;
 import com.aives.application.port.in.UserManagementUseCase;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,7 +36,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AuthenticationService implements AuthenticationUseCase {
 
@@ -45,6 +43,16 @@ public class AuthenticationService implements AuthenticationUseCase {
     private final UserManagementUseCase userManagementService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+
+    public AuthenticationService(UserRepository userRepository,
+                                 UserManagementUseCase userManagementService,
+                                 PasswordEncoder passwordEncoder,
+                                 EmailService emailService) {
+        this.userRepository = userRepository;
+        this.userManagementService = userManagementService;
+        this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
+    }
 
     @Value("${jwt.signer-key}")
     private String signerKey;

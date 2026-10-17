@@ -10,7 +10,6 @@ import com.aives.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,12 +19,15 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping({"/api/v1/admin/subjects", "/api/admin/subjects"})
-@RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Admin - Subject Management", description = "Endpoints for managing subjects and lecturer assignments")
 public class AdminSubjectController {
 
     private final SubjectUseCase subjectService;
+
+    public AdminSubjectController(SubjectUseCase subjectService) {
+        this.subjectService = subjectService;
+    }
 
     // ==========================================
     // SUBJECTS CRUD

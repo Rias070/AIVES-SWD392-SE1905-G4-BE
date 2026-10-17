@@ -13,9 +13,7 @@ import com.aives.exception.AppException;
 import com.aives.repository.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.aives.application.port.in.LecturerDocumentUseCase;
 import com.aives.application.port.in.LecturerQuestionUseCase;
@@ -32,7 +30,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class LecturerService implements LecturerDocumentUseCase, LecturerQuestionUseCase, LecturerRubricUseCase {
 
@@ -43,6 +40,22 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     private final SubjectRepository subjectRepository;
     private final LLMProviderPort llmProviderPort;
     private final VectorEmbeddingPort vectorEmbeddingPort;
+
+    public LecturerService(DocumentRepository documentRepository,
+                           DocumentChunkRepository documentChunkRepository,
+                           QuestionRepository questionRepository,
+                           RubricRepository rubricRepository,
+                           SubjectRepository subjectRepository,
+                           LLMProviderPort llmProviderPort,
+                           VectorEmbeddingPort vectorEmbeddingPort) {
+        this.documentRepository = documentRepository;
+        this.documentChunkRepository = documentChunkRepository;
+        this.questionRepository = questionRepository;
+        this.rubricRepository = rubricRepository;
+        this.subjectRepository = subjectRepository;
+        this.llmProviderPort = llmProviderPort;
+        this.vectorEmbeddingPort = vectorEmbeddingPort;
+    }
 
     // ==========================================
     // 1. RAG DOCUMENTS MANAGEMENT (INGESTION & VECTORIZATION)

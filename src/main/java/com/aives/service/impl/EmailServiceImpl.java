@@ -3,7 +3,6 @@ package com.aives.service.impl;
 import com.aives.service.EmailService;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -18,11 +17,14 @@ import java.time.format.DateTimeFormatter;
  * Service thực thi gửi email thực tế qua SMTP Gmail với giao diện HTML chuẩn AIVES.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
+
+    public EmailServiceImpl(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
+    }
 
     @Value("${spring.mail.username:contact.basaucycle2026@gmail.com}")
     private String fromEmail;

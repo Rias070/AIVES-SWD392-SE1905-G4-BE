@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,13 +26,17 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping({"/api/v1/admin/users", "/api/admin/users"})
-@RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Admin - User Management", description = "CRUD endpoints for admin to manage user accounts and assign roles")
 public class AdminUserController {
 
     private final UserManagementUseCase userManagementService;
     private final NotificationPort emailService;
+
+    public AdminUserController(UserManagementUseCase userManagementService, NotificationPort emailService) {
+        this.userManagementService = userManagementService;
+        this.emailService = emailService;
+    }
 
     @PostMapping
     @Operation(summary = "Create a new user account",

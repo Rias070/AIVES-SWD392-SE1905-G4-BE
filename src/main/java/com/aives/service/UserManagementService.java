@@ -14,7 +14,6 @@ import com.aives.exception.AppException;
 import com.aives.repository.RoleRepository;
 import com.aives.repository.UserRepository;
 import com.aives.repository.UserRoleRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.aives.application.port.in.UserManagementUseCase;
 import org.springframework.data.domain.Page;
@@ -29,7 +28,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class UserManagementService implements UserManagementUseCase {
 
@@ -37,6 +35,14 @@ public class UserManagementService implements UserManagementUseCase {
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
+
+    public UserManagementService(UserRepository userRepository, RoleRepository roleRepository,
+                                 UserRoleRepository userRoleRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.userRoleRepository = userRoleRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {

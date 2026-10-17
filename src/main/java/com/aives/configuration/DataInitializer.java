@@ -4,7 +4,6 @@ import com.aives.entity.*;
 import com.aives.enums.RoleEnum;
 import com.aives.enums.UserStatus;
 import com.aives.repository.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -16,7 +15,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class DataInitializer implements ApplicationRunner {
 
@@ -27,6 +25,22 @@ public class DataInitializer implements ApplicationRunner {
     private final QuestionRepository questionRepository;
     private final RubricRepository rubricRepository;
     private final PasswordEncoder passwordEncoder;
+
+    public DataInitializer(UserRepository userRepository,
+                           RoleRepository roleRepository,
+                           SubjectRepository subjectRepository,
+                           SubjectLecturerRepository subjectLecturerRepository,
+                           QuestionRepository questionRepository,
+                           RubricRepository rubricRepository,
+                           PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.subjectRepository = subjectRepository;
+        this.subjectLecturerRepository = subjectLecturerRepository;
+        this.questionRepository = questionRepository;
+        this.rubricRepository = rubricRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Override
     @Transactional
