@@ -63,7 +63,7 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                 Map<String, Object> contentObj = Map.of("parts", List.of(part));
                 Map<String, Object> body = Map.of("contents", List.of(contentObj));
 
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + geminiApiKey;
                 Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
                 if (response != null && response.containsKey("candidates")) {
                     List<?> candidates = (List<?>) response.get("candidates");
@@ -122,9 +122,18 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
 
                 Map<String, Object> part = Map.of("text", prompt);
                 Map<String, Object> contentObj = Map.of("parts", List.of(part));
-                Map<String, Object> body = Map.of("contents", List.of(contentObj));
 
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+                Map<String, Object> generationConfig = new HashMap<>();
+                generationConfig.put("temperature", 0.9);
+                generationConfig.put("topK", 40);
+                generationConfig.put("topP", 0.95);
+                generationConfig.put("maxOutputTokens", 4096);
+
+                Map<String, Object> body = new HashMap<>();
+                body.put("contents", List.of(contentObj));
+                body.put("generationConfig", generationConfig);
+
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + geminiApiKey;
                 Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
 
                 if (response != null && response.containsKey("candidates")) {
@@ -153,7 +162,76 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
 
     @Override
     public String generateEmbeddingVector(String text) {
-        // Generate valid 1536-dimensional normalized vector for pgvector
+        if (text == null || text.isBlank()) {
+            return generateRandomEmbedding("empty");
+        }
+        // Try real Gemini Embedding API first
+        if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
+            try {
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + geminiApiKey;
+                Map<String, Object> part = Map.of("text", text);
+                Map<String, Object> body = Map.of(
+                        "model", "models/text-embedding-004",
+                        "content", Map.of("parts", List.of(part))
+                );
+                Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
+                if (response != null && response.containsKey("embedding")) {
+                    Map<?, ?> embedding = (Map<?, ?>) response.get("embedding");
+                    List<?> values = (List<?>) embedding.get("values");
+                    if (values != null && !values.isEmpty()) {
+                        return padAndFormatVector(values, 1536);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Gemini Embedding API call failed, using deterministic fallback: {}", e.getMessage());
+            }
+        }
+        return generateRandomEmbedding(text);
+    }
+
+    /**
+     * Pad embedding vector to target dimension and return as JSON array string.
+     * If input vector is shorter than target, fills remaining with deterministic noise.
+     * If input is longer, truncates.
+     */
+    private String padAndFormatVector(List<?> values, int targetDim) {
+        float[] vector = new float[targetDim];
+        int copyLen = Math.min(values.size(), targetDim);
+        for (int i = 0; i < copyLen; i++) {
+            Object v = values.get(i);
+            if (v instanceof Number) {
+                vector[i] = ((Number) v).floatValue();
+            }
+        }
+        // Pad remaining dims with deterministic small values based on content hash
+        if (copyLen < targetDim) {
+            Random padRng = new Random(copyLen);
+            for (int i = copyLen; i < targetDim; i++) {
+                vector[i] = (float) (padRng.nextGaussian() * 0.01);
+            }
+        }
+        // Normalize
+        float norm = 0f;
+        for (float v : vector) {
+            norm += v * v;
+        }
+        norm = (float) Math.sqrt(norm);
+        if (norm == 0f) norm = 1f;
+
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < targetDim; i++) {
+            sb.append(String.format(Locale.US, "%.5f", vector[i] / norm));
+            if (i < targetDim - 1) sb.append(",");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /**
+     * Fallback: deterministic random vector based on text hash.
+     * Used when API is unavailable.
+     */
+    private String generateRandomEmbedding(String text) {
         float[] vector = new float[1536];
         int hash = text != null ? text.hashCode() : 42;
         Random rng = new Random(hash);
