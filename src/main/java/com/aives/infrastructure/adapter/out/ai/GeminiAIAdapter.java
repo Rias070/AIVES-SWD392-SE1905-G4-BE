@@ -359,7 +359,11 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            result.add(pool.get(i % pool.size()));
+            Map<String, Object> item = new HashMap<>(pool.get(i % pool.size()));
+            if (bloomLevel != null && !bloomLevel.isBlank()) {
+                item.put("bloomLevel", bloomLevel);
+            }
+            result.add(item);
         }
         return result;
     }
