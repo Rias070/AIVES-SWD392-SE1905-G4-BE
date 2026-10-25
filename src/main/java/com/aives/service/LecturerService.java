@@ -133,7 +133,12 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         List<DocumentChunk> chunkEntities = new ArrayList<>();
         for (int i = 0; i < rawChunks.size(); i++) {
             String chunkContent = rawChunks.get(i);
-            String vectorEmbedding = vectorEmbeddingPort.generateEmbeddingVector(chunkContent);
+            String vectorEmbedding = null;
+            try {
+                vectorEmbedding = vectorEmbeddingPort.generateEmbeddingVector(chunkContent);
+            } catch (Exception e) {
+                log.warn("Failed to generate embedding for chunk {}: {}", i + 1, e.getMessage());
+            }
 
             DocumentChunk chunk = DocumentChunk.builder()
                     .document(doc)

@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS questions (
     keywords TEXT,
     embedding vector(1536),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    deleted_at TIMESTAMP WITHOUT TIME ZONE,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -165,6 +166,15 @@ CREATE INDEX IF NOT EXISTS idx_rubrics_question ON rubrics(question_uuid);
 CREATE INDEX IF NOT EXISTS idx_sessions_student ON exam_sessions(student_uuid);
 CREATE INDEX IF NOT EXISTS idx_sessions_subject ON exam_sessions(subject_uuid);
 CREATE INDEX IF NOT EXISTS idx_viva_turns_session ON viva_turns(exam_session_uuid);
+
+-- 3.1 Vector Similarity Indexes (HNSW Cosine Distance <=> for pgvector 1536-dim)
+CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw 
+ON document_chunks USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX IF NOT EXISTS idx_questions_embedding_hnsw 
+ON questions USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
 
 -- ============================================================================
 -- 4. CLEAN SEED DATA (Realistic Academic Viva Data)

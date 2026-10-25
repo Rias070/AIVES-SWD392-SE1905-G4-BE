@@ -132,18 +132,73 @@ public class StudentExamService implements StudentExamUseCase {
             question = questionRepository.findById(request.getQuestionUuid()).orElse(null);
         }
 
-        // Mock evaluation score between 7.5 and 9.5 for demo
-        double mockScore = 7.5 + (Math.random() * 2.0);
-        BigDecimal turnScore = BigDecimal.valueOf(mockScore).setScale(2, RoundingMode.HALF_UP);
+        UUID subjectUuid = session.getSubject() != null ? session.getSubject().getUuid() : null;
+        String subjectCode = session.getSubject() != null ? session.getSubject().getCode() : "CS301";
+
+        // 1. RAG snippets from document_chunks
+        List<String> ragSnippets = new ArrayList<>();
+        if (subjectUuid != null) {
+            try {
+                List<DocumentChunk> chunks = documentChunkRepository.findTopChunksBySubject(subjectUuid, 3);
+                for (DocumentChunk c : chunks) {
+                    if (c.getChunkContent() != null && !c.getChunkContent().isBlank()) {
+                        ragSnippets.add(c.getChunkContent());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not query document_chunks for RAG: {}", e.getMessage());
+            }
+        }
+        if (ragSnippets.isEmpty()) {
+            ragSnippets.add("Đề cương môn học " + subjectCode + ": Nắm vững thuật toán và cấu trúc dữ liệu, phân tích độ phức tạp.");
+        }
+
+        // 2. Rubric criteria
+        List<Rubric> rubrics = Collections.emptyList();
+        if (question != null) {
+            try {
+                rubrics = rubricRepository.findByQuestionUuid(question.getUuid());
+            } catch (Exception e) {
+                log.warn("Could not fetch rubrics for question: {}", e.getMessage());
+            }
+        }
+        if (rubrics.isEmpty() && subjectUuid != null) {
+            try {
+                rubrics = rubricRepository.findBySubjectUuid(subjectUuid);
+            } catch (Exception e) {
+                log.warn("Could not fetch rubrics for subject: {}", e.getMessage());
+            }
+        }
+
+        String studentAnswer = request.getStudentAnswer();
+        if (studentAnswer == null || studentAnswer.isBlank()) {
+            studentAnswer = request.getAudioTranscript();
+        }
+        if (studentAnswer == null || studentAnswer.isBlank()) {
+            studentAnswer = "Thí sinh trình bày nội dung câu trả lời theo yêu cầu của câu hỏi vấn đáp.";
+        }
+
+        String questionContent = question != null ? question.getContent() : "Câu hỏi kiểm tra vấn đáp";
+        int turnOrder = request.getTurnOrder() != null ? request.getTurnOrder() : 1;
+
+        VivaEvaluationResult evalResult = llmProviderPort.evaluateVivaTurn(
+                subjectCode,
+                turnOrder,
+                questionContent,
+                studentAnswer,
+                ragSnippets,
+                rubrics,
+                "vi-VN"
+        );
 
         VivaTurn turn = VivaTurn.builder()
                 .examSession(session)
                 .question(question)
-                .turnOrder(request.getTurnOrder())
-                .studentAnswer(request.getStudentAnswer())
-                .audioTranscript(request.getAudioTranscript())
-                .aiEvaluation("Đánh giá AI: Luận điểm rõ ràng, lập luận logic, thuật ngữ chuyên ngành chính xác.")
-                .score(turnScore)
+                .turnOrder(turnOrder)
+                .studentAnswer(studentAnswer)
+                .audioTranscript(request.getAudioTranscript() != null ? request.getAudioTranscript() : studentAnswer)
+                .aiEvaluation(evalResult.aiEvaluation)
+                .score(evalResult.score)
                 .turnDurationSeconds(request.getTurnDurationSeconds() != null ? request.getTurnDurationSeconds() : 60)
                 .build();
 
