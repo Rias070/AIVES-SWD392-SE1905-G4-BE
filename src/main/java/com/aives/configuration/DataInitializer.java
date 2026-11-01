@@ -70,8 +70,9 @@ public class DataInitializer implements ApplicationRunner {
                                 .build()));
 
         // 2. Initialize Default Admin
-        if (!userRepository.existsByEmail("admin@aives.edu.vn")) {
-            User admin = User.builder()
+        User admin = userRepository.findByEmail("admin@aives.edu.vn").orElse(null);
+        if (admin == null) {
+            admin = User.builder()
                     .email("admin@aives.edu.vn")
                     .password(passwordEncoder.encode("Admin@123"))
                     .fullName("AIVES Administrator")
@@ -87,6 +88,8 @@ public class DataInitializer implements ApplicationRunner {
 
             userRepository.save(admin);
             log.info("Default Admin created: admin@aives.edu.vn / Admin@123");
+        } else {
+            ensureDefaultPassword(admin, "Admin@123");
         }
 
         // 3. Initialize Default Lecturer
@@ -108,11 +111,14 @@ public class DataInitializer implements ApplicationRunner {
 
             defaultLecturer = userRepository.save(defaultLecturer);
             log.info("Default Lecturer created: lecturer@aives.edu.vn / Lecturer@123");
+        } else {
+            ensureDefaultPassword(defaultLecturer, "Lecturer@123");
         }
 
         // 4. Initialize Default Student
-        if (!userRepository.existsByEmail("student@aives.edu.vn")) {
-            User student = User.builder()
+        User defaultStudent = userRepository.findByEmail("student@aives.edu.vn").orElse(null);
+        if (defaultStudent == null) {
+            defaultStudent = User.builder()
                     .email("student@aives.edu.vn")
                     .password(passwordEncoder.encode("Student@123"))
                     .fullName("Tran Thi Mai")
@@ -121,13 +127,15 @@ public class DataInitializer implements ApplicationRunner {
                     .build();
 
             UserRole userRole = UserRole.builder()
-                    .user(student)
+                    .user(defaultStudent)
                     .role(studentRole)
                     .build();
-            student.getUserRoles().add(userRole);
+            defaultStudent.getUserRoles().add(userRole);
 
-            userRepository.save(student);
+            defaultStudent = userRepository.save(defaultStudent);
             log.info("Default Student created: student@aives.edu.vn / Student@123");
+        } else {
+            ensureDefaultPassword(defaultStudent, "Student@123");
         }
 
         // 5. Initialize Foundation Subjects
@@ -238,6 +246,24 @@ public class DataInitializer implements ApplicationRunner {
         );
 
         log.info("AIVES data initialization completed successfully.");
+    }
+
+    /**
+     * Đồng bộ lại mật khẩu mặc định nếu tài khoản seed sẵn trong SQL có hash sai / không hợp lệ.
+     * Idempotent - an toàn khi chạy mỗi lần app start.
+     */
+    private void ensureDefaultPassword(User user, String rawPassword) {
+        boolean matches = false;
+        try {
+            matches = passwordEncoder.matches(rawPassword, user.getPassword());
+        } catch (Exception e) {
+            log.warn("Could not verify password for {}: {}", user.getEmail(), e.getMessage());
+        }
+        if (!matches) {
+            user.setPassword(passwordEncoder.encode(rawPassword));
+            userRepository.save(user);
+            log.info("Reset default password for account: {}", user.getEmail());
+        }
     }
 
     private void seedFoundationQuestion(
