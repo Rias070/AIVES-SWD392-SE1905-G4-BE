@@ -9,6 +9,8 @@
 -- 1. Enable Required Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";
+-- pgcrypto: sinh BCrypt hash (cost 10) cho seed users -> verify được bởi BCryptPasswordEncoder
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ============================================================================
 -- 2. CREATE TABLES (With IF NOT EXISTS and strict FK relationships)
@@ -187,12 +189,18 @@ INSERT INTO roles (uuid, name, description) VALUES
     ('a0000000-0000-0000-0000-000000000003', 'STUDENT', 'Student taking AI Viva examinations')
 ON CONFLICT (name) DO NOTHING;
 
--- 4.2 Insert Default Users (Passwords match DataInitializer: Admin@123, Lecturer@123, Student@123)
--- BCrypt encoded password hashes for spring security
+-- 4.2 Insert Default Users
+-- Password hash được sinh bởi pgcrypto (BCrypt cost=10) -> verify được bởi BCryptPasswordEncoder
+-- admin@aives.edu.vn / Admin@123
+-- lecturer@aives.edu.vn / Lecturer@123
+-- student@aives.edu.vn / Student@123
 INSERT INTO users (uuid, user_code, email, password, full_name, phone_number, status) VALUES
-    ('b0000000-0000-0000-0000-000000000001', 'ADM-001', 'admin@aives.edu.vn', '$2a$10$wK0w0B0bIeH7.c4F.lKqu.QjU.u9kKz6mPzVp3Zk4dF8pXoN5z4zG', 'AIVES Administrator', '0901234567', 'ACTIVE'),
-    ('b0000000-0000-0000-0000-000000000002', 'LEC-001', 'lecturer@aives.edu.vn', '$2a$10$wK0w0B0bIeH7.c4F.lKqu.QjU.u9kKz6mPzVp3Zk4dF8pXoN5z4zG', 'Dr. Nguyen Van Giang', '0912345678', 'ACTIVE'),
-    ('b0000000-0000-0000-0000-000000000003', 'STU-001', 'student@aives.edu.vn', '$2a$10$wK0w0B0bIeH7.c4F.lKqu.QjU.u9kKz6mPzVp3Zk4dF8pXoN5z4zG', 'Tran Thi Mai', '0987654321', 'ACTIVE')
+    ('b0000000-0000-0000-0000-000000000001', 'ADM-001', 'admin@aives.edu.vn',
+     crypt('Admin@123', gen_salt('bf', 10)), 'AIVES Administrator', '0901234567', 'ACTIVE'),
+    ('b0000000-0000-0000-0000-000000000002', 'LEC-001', 'lecturer@aives.edu.vn',
+     crypt('Lecturer@123', gen_salt('bf', 10)), 'Dr. Nguyen Van Giang', '0912345678', 'ACTIVE'),
+    ('b0000000-0000-0000-0000-000000000003', 'STU-001', 'student@aives.edu.vn',
+     crypt('Student@123', gen_salt('bf', 10)), 'Tran Thi Mai', '0987654321', 'ACTIVE')
 ON CONFLICT (email) DO NOTHING;
 
 -- 4.3 Assign User Roles
