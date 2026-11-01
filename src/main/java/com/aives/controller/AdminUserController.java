@@ -174,6 +174,19 @@ public class AdminUserController {
                 .build());
     }
 
+    @GetMapping("/test-mail")
+    @Operation(summary = "Test sending email",
+            description = "Trigger a test registration welcome email to the specified address. Admin-only endpoint.")
+    public ResponseEntity<ApiResponse<String>> testMail(@RequestParam String to) {
+        log.info("GET /api/v1/admin/users/test-mail: to={}", to);
+        emailService.sendRegistrationWelcomeEmail(to, "Người Dùng Thử Nghiệm", "STUDENT", "SE190001");
+        return ResponseEntity.ok(ApiResponse.<String>builder()
+                .code(1000)
+                .message("Lệnh gửi email chào mừng đã được khởi tạo thành công tới: " + to)
+                .result("Dispatched to " + to)
+                .build());
+    }
+
     private Sort parseSort(String sort) {
         if (sort == null || sort.isBlank()) {
             return Sort.by(Sort.Direction.DESC, "createdAt");

@@ -127,14 +127,22 @@ curl -X POST http://localhost:8080/api/v1/admin/users ^
 
 ---
 
-### Test 6: Register với roleName=ADMIN → ACTIVE ngay
+### Test 6: Register với roleName=ADMIN → bị từ chối
 **Request:**
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"test.admin@aives.edu.vn\",\"password\":\"SecurePass123\",\"fullName\":\"Test Admin\",\"roleName\":\"ADMIN\"}"
 ```
-**Expected:** Trả về `token` và `authenticated: true` ngay (admin không cần activate).
+**Expected (HTTP 403, code 1007):**
+```json
+{
+  "code": 1007,
+  "message": "Không thể tự đăng ký tài khoản Quản trị viên. Vui lòng liên hệ quản trị viên hệ thống."
+}
+```
+> Tài khoản ADMIN **không thể tự đăng ký** qua endpoint công khai. Quản trị viên được cấp
+> qua endpoint `/api/v1/admin/users` (yêu cầu token ADMIN) — xem Test 5.
 
 ---
 
