@@ -123,34 +123,13 @@ public class AuthenticationService implements AuthenticationUseCase {
 
         boolean isAdminRegistration = RoleEnum.ADMIN.name().equalsIgnoreCase(request.getRoleName());
 
-        // ADMIN registration → ACTIVE immediately, no email activation needed
+        // ADMIN accounts cannot be self-registered - the endpoint is public, so allowing it
+        // would let anyone grant themselves full admin access. Admins are provisioned
+        // through the secured /api/v1/admin/users endpoint instead.
         if (isAdminRegistration) {
-            log.info("Admin-level registration detected for email: {}", request.getEmail());
-            UserResponse createdUser = userManagementService.createUser(request);
-
-            User user = userRepository.findByEmail(request.getEmail().trim().toLowerCase())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
-
-            String token = generateToken(user);
-
-            // Send account creation email (no activation needed for admin)
-            try {
-                emailService.sendAccountCreationEmail(
-                        user.getEmail(),
-                        user.getFullName(),
-                        request.getRoleName(),
-                        user.getUserCode(),
-                        request.getPassword()
-                );
-            } catch (Exception e) {
-                log.error("Failed to send account creation email to {}: {}", user.getEmail(), e.getMessage());
-            }
-
-            return AuthResponse.builder()
-                    .token(token)
-                    .authenticated(true)
-                    .user(createdUser)
-                    .build();
+            log.warn("Blocked self-registration attempt for ADMIN role: {}", request.getEmail());
+            throw new AppException(ErrorCode.UNAUTHORIZED,
+                    "Không thể tự đăng ký tài khoản Quản trị viên. Vui lòng liên hệ quản trị viên hệ thống.");
         }
 
         // STUDENT / LECTURER → PENDING_EMAIL status

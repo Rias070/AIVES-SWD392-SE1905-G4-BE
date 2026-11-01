@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import com.aives.application.port.out.NotificationPort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,11 +21,9 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthenticationUseCase authenticationService;
-    private final NotificationPort emailService;
 
-    public AuthController(AuthenticationUseCase authenticationService, NotificationPort emailService) {
+    public AuthController(AuthenticationUseCase authenticationService) {
         this.authenticationService = authenticationService;
-        this.emailService = emailService;
     }
 
     @PostMapping("/login")
@@ -43,7 +40,7 @@ public class AuthController {
 
     @PostMapping("/register")
     @Operation(summary = "Register new account",
-            description = "Self-registration for students/lecturers — requires email activation. Admin role gets ACTIVE immediately.")
+            description = "Self-registration for students/lecturers — requires email activation before the account can sign in. Admin accounts cannot be self-registered.")
     public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody UserCreateRequest request) {
         log.info("POST /api/v1/auth/register: email={}", request.getEmail());
         AuthResponse response = authenticationService.register(request);
@@ -77,18 +74,6 @@ public class AuthController {
                 .code(1000)
                 .message("Email kích hoạt mới đã được gửi. Vui lòng kiểm tra hộp thư (bao gồm thư rác).")
                 .result("Email kích hoạt đã được gửi.")
-                .build());
-    }
-
-    @GetMapping("/test-mail")
-    @Operation(summary = "Test sending email", description = "Trigger a test registration welcome email to the specified address")
-    public ResponseEntity<ApiResponse<String>> testMail(@RequestParam String to) {
-        log.info("GET /api/v1/auth/test-mail: to={}", to);
-        emailService.sendRegistrationWelcomeEmail(to, "Người Dùng Thử Nghiệm", "STUDENT", "SE190001");
-        return ResponseEntity.ok(ApiResponse.<String>builder()
-                .code(1000)
-                .message("Lệnh gửi email chào mừng đã được khởi tạo thành công tới: " + to)
-                .result("Dispatched to " + to)
                 .build());
     }
 }
