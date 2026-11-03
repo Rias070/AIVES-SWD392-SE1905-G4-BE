@@ -13,4 +13,5 @@ public class AuthResponse {
     private String token;
     private boolean authenticated;
     private UserResponse user;
+    private String activationLink;
 }

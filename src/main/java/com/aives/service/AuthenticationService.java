@@ -147,6 +147,7 @@ public class AuthenticationService implements AuthenticationUseCase {
         // Generate activation token and send activation email
         String activationToken = generateActivationToken(user);
         String activationLink = frontendUrl + "/activate?token=" + activationToken;
+        log.info("Generated activation link for {}: {}", user.getEmail(), activationLink);
 
         try {
             emailService.sendAccountActivationEmail(
@@ -158,7 +159,7 @@ public class AuthenticationService implements AuthenticationUseCase {
             log.info("Activation email sent to: {}", user.getEmail());
         } catch (Exception e) {
             log.error("Failed to send activation email to {}: {}", user.getEmail(), e.getMessage());
-            // Don't fail registration if email fails — user can request resend
+            // Don't fail registration if email fails — user can request resend or use activationLink
         }
 
         // Return response WITHOUT JWT token — user must activate first
@@ -166,6 +167,7 @@ public class AuthenticationService implements AuthenticationUseCase {
                 .token(null)
                 .authenticated(false)
                 .user(createdUser)
+                .activationLink(activationLink)
                 .build();
     }
 
@@ -321,6 +323,7 @@ public class AuthenticationService implements AuthenticationUseCase {
         // Generate new activation token
         String newToken = generateActivationToken(user);
         String activationLink = frontendUrl + "/activate?token=" + newToken;
+        log.info("Generated new activation link for {}: {}", user.getEmail(), activationLink);
 
         String roleName = user.getUserRoles().stream()
                 .findFirst()
@@ -346,9 +349,6 @@ public class AuthenticationService implements AuthenticationUseCase {
     // TOKEN GENERATION HELPERS
     // ==========================================
 
-    /**
-     * Generate standard authentication JWT token (HS512).
-     */
     private String generateToken(User user) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
 
@@ -380,9 +380,6 @@ public class AuthenticationService implements AuthenticationUseCase {
         }
     }
 
-    /**
-     * Generate activation JWT token (HS512) with purpose=ACTIVATION, exp=24h.
-     */
     private String generateActivationToken(User user) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
 
