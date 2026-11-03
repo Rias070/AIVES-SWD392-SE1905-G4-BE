@@ -19,6 +19,8 @@ public class VivaTurnResponse {
     private String audioTranscript;
     private String aiEvaluation;
     private BigDecimal score;
+    private String followupQuestion;
+    private String bloomLevel;
     private Integer turnDurationSeconds;
     private LocalDateTime createdAt;
 }

@@ -24,15 +24,26 @@ public class LecturerDocumentController {
         this.lecturerService = lecturerService;
     }
 
+    private UUID parseUuidSafely(String rawUuid) {
+        if (rawUuid == null || rawUuid.isBlank() || "undefined".equalsIgnoreCase(rawUuid.trim()) || "null".equalsIgnoreCase(rawUuid.trim())) {
+            return null;
+        }
+        try {
+            return UUID.fromString(rawUuid.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     @GetMapping
     @Operation(summary = "Get syllabus documents for RAG retrieval")
     public ResponseEntity<ApiResponse<List<DocumentResponse>>> getDocuments(
             @RequestParam(required = false) String subjectCode,
-            @RequestParam(required = false) UUID subjectUuid) {
+            @RequestParam(value = "subjectUuid", required = false) String subjectUuidStr) {
         return ResponseEntity.ok(ApiResponse.<List<DocumentResponse>>builder()
                 .code(1000)
                 .message("Lấy danh sách học liệu thành công")
-                .result(lecturerService.getDocuments(subjectCode, subjectUuid))
+                .result(lecturerService.getDocuments(subjectCode, parseUuidSafely(subjectUuidStr)))
                 .build());
     }
 
@@ -52,11 +63,11 @@ public class LecturerDocumentController {
     public ResponseEntity<ApiResponse<DocumentResponse>> uploadDocumentFile(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             @RequestParam(value = "subjectCode", required = false) String subjectCode,
-            @RequestParam(value = "subjectUuid", required = false) UUID subjectUuid) {
+            @RequestParam(value = "subjectUuid", required = false) String subjectUuidStr) {
         return ResponseEntity.ok(ApiResponse.<DocumentResponse>builder()
                 .code(1000)
                 .message("Tải lên tệp và tạo vector chunking thành công")
-                .result(lecturerService.uploadDocumentFile(file, subjectCode, subjectUuid))
+                .result(lecturerService.uploadDocumentFile(file, subjectCode, parseUuidSafely(subjectUuidStr)))
                 .build());
     }
 

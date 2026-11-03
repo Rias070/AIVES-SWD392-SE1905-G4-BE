@@ -28,6 +28,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.Inflater;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 @Service
 @Slf4j
@@ -216,8 +223,9 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         int count = request.getCount() != null ? Math.max(1, Math.min(10, request.getCount())) : 3;
         String topic = request.getTopic() != null && !request.getTopic().isBlank() ? request.getTopic().trim() : "Trọng tâm kiến thức môn học";
         String requestedBloom = request.getBloomLevel() != null ? request.getBloomLevel() : "ALL";
+        String requestedDifficulty = request.getDifficulty() != null ? request.getDifficulty() : "MEDIUM";
 
-        List<Map<String, Object>> generatedItems = llmProviderPort.generateQuestionsFromSyllabus(subject, topic, requestedBloom, count, ragContext);
+        List<Map<String, Object>> generatedItems = llmProviderPort.generateQuestionsFromSyllabus(subject, topic, requestedBloom, requestedDifficulty, count, ragContext);
 
         List<QuestionResponse> results = new ArrayList<>();
         for (int i = 0; i < generatedItems.size(); i++) {
@@ -614,21 +622,132 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     }
 
     private String extractTextFromFile(MultipartFile file, Subject subject, String fileName) {
+        String lowerName = (fileName != null ? fileName : "").toLowerCase();
         try {
             byte[] bytes = file.getBytes();
+            if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
+                String docxText = extractDocx(bytes);
+                if (docxText.length() > 50) {
+                    log.info("Successfully extracted {} characters from DOCX file '{}'", docxText.length(), fileName);
+                    return docxText;
+                }
+            } else if (lowerName.endsWith(".pdf")) {
+                String pdfText = extractPdf(bytes);
+                if (pdfText.length() > 50) {
+                    log.info("Successfully extracted {} characters from PDF file '{}'", pdfText.length(), fileName);
+                    return pdfText;
+                }
+            }
+
+            // UTF-8 plain text fallback for txt, md, json, csv, etc.
             String raw = new String(bytes, StandardCharsets.UTF_8);
-            // If readable UTF-8 text with enough length
-            if (raw.length() > 100 && !raw.contains("\u0000")) {
+            if (raw.length() > 30 && !raw.contains("\u0000")) {
+                log.info("Successfully read {} characters from text file '{}'", raw.length(), fileName);
                 return raw;
             }
         } catch (Exception e) {
-            log.warn("Error reading file stream: {}", e.getMessage());
+            log.warn("Error reading file stream for {}: {}", fileName, e.getMessage());
         }
 
         // Return synthesized academic outline for non-text / binary files
+        log.warn("Could not extract raw text from binary file '{}', using structured academic syllabus context.", fileName);
         return "TÀI LIỆU HỌC PHẦN " + subject.getCode() + " - " + subject.getName() + "\n" +
                 "Tệp đính kèm: " + fileName + "\n" +
                 "Nội dung trọng tâm: Hệ thống kiến thức chuẩn hóa, các mô hình lý thuyết nền tảng, bài toán thực tiễn và kỹ thuật giải quyết chuyên sâu theo thang đo nhận thức Bloom.";
+    }
+
+    private String extractDocx(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(bytes))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("word/document.xml".equals(entry.getName())) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    byte[] buf = new byte[4096];
+                    int len;
+                    while ((len = zis.read(buf)) > 0) {
+                        baos.write(buf, 0, len);
+                    }
+                    String xml = baos.toString(StandardCharsets.UTF_8);
+                    Pattern p = Pattern.compile("<w:t[^>]*>(.*?)</w:t>");
+                    Matcher m = p.matcher(xml);
+                    while (m.find()) {
+                        sb.append(m.group(1)).append(" ");
+                    }
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error reading docx stream: {}", e.getMessage());
+        }
+        return sb.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private String extractPdf(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            Pattern pLiteral = Pattern.compile("\\(([\\x20-\\x7E\\xA0-\\xFF\\s]{3,})\\)\\s*(?:Tj|TJ|'|\")");
+            // 1. Literal pattern search in uncompressed streams
+            String rawIso = new String(bytes, StandardCharsets.ISO_8859_1);
+            Matcher mLiteral = pLiteral.matcher(rawIso);
+            while (mLiteral.find()) {
+                sb.append(mLiteral.group(1)).append(" ");
+            }
+
+            // 2. Decompress FlateDecode streams
+            int idx = 0;
+            byte[] streamHeader = "stream".getBytes(StandardCharsets.ISO_8859_1);
+            byte[] streamEnd = "endstream".getBytes(StandardCharsets.ISO_8859_1);
+
+            while ((idx = indexOfBytes(bytes, streamHeader, idx)) != -1) {
+                int start = idx + streamHeader.length;
+                if (start < bytes.length && (bytes[start] == '\r' || bytes[start] == '\n')) start++;
+                if (start < bytes.length && (bytes[start] == '\r' || bytes[start] == '\n')) start++;
+
+                int end = indexOfBytes(bytes, streamEnd, start);
+                if (end != -1 && end > start) {
+                    byte[] deflated = new byte[end - start];
+                    System.arraycopy(bytes, start, deflated, 0, deflated.length);
+                    try {
+                        Inflater inflater = new Inflater();
+                        inflater.setInput(deflated);
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        byte[] buffer = new byte[4096];
+                        while (!inflater.finished()) {
+                            int count = inflater.inflate(buffer);
+                            if (count <= 0) break;
+                            baos.write(buffer, 0, count);
+                        }
+                        inflater.end();
+                        byte[] decompressed = baos.toByteArray();
+                        if (decompressed.length > 0) {
+                            String decompStr = new String(decompressed, StandardCharsets.UTF_8);
+                            Matcher m2 = pLiteral.matcher(decompStr);
+                            while (m2.find()) {
+                                sb.append(m2.group(1)).append(" ");
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    idx = end + streamEnd.length;
+                } else {
+                    idx = start + 1;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error parsing PDF bytes: {}", e.getMessage());
+        }
+        return sb.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private int indexOfBytes(byte[] data, byte[] target, int start) {
+        outer: for (int i = start; i <= data.length - target.length; i++) {
+            for (int j = 0; j < target.length; j++) {
+                if (data[i + j] != target[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
     }
 
     private List<String> splitIntoChunks(String text, int chunkSize, int overlap) {

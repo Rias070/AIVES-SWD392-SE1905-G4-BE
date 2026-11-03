@@ -22,7 +22,18 @@ public interface LLMProviderPort {
             Subject subject,
             String topic,
             String bloomLevel,
+            String difficulty,
             int count,
             String ragContext
     );
+
+    default List<Map<String, Object>> generateQuestionsFromSyllabus(
+            Subject subject,
+            String topic,
+            String bloomLevel,
+            int count,
+            String ragContext
+    ) {
+        return generateQuestionsFromSyllabus(subject, topic, bloomLevel, "MEDIUM", count, ragContext);
+    }
 }
