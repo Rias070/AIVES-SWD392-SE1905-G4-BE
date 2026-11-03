@@ -30,6 +30,22 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
     @Value("${gemini.api.key:dummy_key}")
     private String geminiApiKey;
 
+    /** Primary text generation model. */
+    @Value("${gemini.text.model:gemini-3.5-flash}")
+    private String textModel;
+
+    /** Comma-separated ordered list of fallback text models tried after the primary one fails. */
+    @Value("${gemini.fallback.models:gemini-3.5-flash-lite,gemini-3-flash-preview,gemini-3.1-flash-lite}")
+    private String fallbackModels;
+
+    /** Embedding model used to build vectors (text-embedding-004 was retired by Google). */
+    @Value("${gemini.embedding.model:gemini-embedding-001}")
+    private String embeddingModel;
+
+    /** Requested embedding dimensionality; must match the vector(1536) column. */
+    @Value("${gemini.embedding.dimensions:1536}")
+    private int embeddingDimensions;
+
     @Override
     public VivaEvaluationResult evaluateVivaTurn(
             String subjectCode,
@@ -63,20 +79,9 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                 Map<String, Object> contentObj = Map.of("parts", List.of(part));
                 Map<String, Object> body = Map.of("contents", List.of(contentObj));
 
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + geminiApiKey;
-                Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
-                if (response != null && response.containsKey("candidates")) {
-                    List<?> candidates = (List<?>) response.get("candidates");
-                    if (!candidates.isEmpty()) {
-                        Map<?, ?> candidate = (Map<?, ?>) candidates.get(0);
-                        Map<?, ?> content = (Map<?, ?>) candidate.get("content");
-                        List<?> parts = (List<?>) content.get("parts");
-                        if (!parts.isEmpty()) {
-                            Map<?, ?> textPart = (Map<?, ?>) parts.get(0);
-                            String aiRawText = (String) textPart.get("text");
-                            return parseGeminiOutput(aiRawText, turnOrder, subjectCode, lang);
-                        }
-                    }
+                String aiRawText = callGeminiGenerateContent(body, null, "viva-evaluate");
+                if (aiRawText != null) {
+                    return parseGeminiOutput(aiRawText, turnOrder, subjectCode, lang);
                 }
             } catch (Exception e) {
                 log.warn("Gemini API call failed or timed out, activating adaptive domain reasoning engine: {}", e.getMessage());
@@ -133,24 +138,13 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                 body.put("contents", List.of(contentObj));
                 body.put("generationConfig", generationConfig);
 
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + geminiApiKey;
-                Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
-
-                if (response != null && response.containsKey("candidates")) {
-                    List<?> candidates = (List<?>) response.get("candidates");
-                    if (!candidates.isEmpty()) {
-                        Map<?, ?> candidate = (Map<?, ?>) candidates.get(0);
-                        Map<?, ?> content = (Map<?, ?>) candidate.get("content");
-                        List<?> parts = (List<?>) content.get("parts");
-                        if (!parts.isEmpty()) {
-                            Map<?, ?> textPart = (Map<?, ?>) parts.get(0);
-                            String rawText = (String) textPart.get("text");
-                            List<Map<String, Object>> parsed = parseGeminiQuestionJson(rawText);
-                            if (parsed != null && !parsed.isEmpty()) {
-                                return parsed;
-                            }
-                        }
+                String rawText = callGeminiGenerateContent(body, null, "question-generation");
+                if (rawText != null) {
+                    List<Map<String, Object>> parsed = parseGeminiQuestionJson(rawText);
+                    if (parsed != null && !parsed.isEmpty()) {
+                        return parsed;
                     }
+                    log.warn("Gemini returned content that could not be parsed as a question JSON array, using high-quality Domain Fallback Generator");
                 }
             } catch (Exception e) {
                 log.warn("Gemini question generation API call failed, using high-quality Domain Fallback Generator: {}", e.getMessage());
@@ -168,25 +162,113 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
         // Try real Gemini Embedding API first
         if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
             try {
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + geminiApiKey;
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                        + embeddingModel + ":embedContent?key=" + geminiApiKey;
                 Map<String, Object> part = Map.of("text", text);
                 Map<String, Object> body = Map.of(
-                        "model", "models/text-embedding-004",
-                        "content", Map.of("parts", List.of(part))
+                        "model", "models/" + embeddingModel,
+                        "content", Map.of("parts", List.of(part)),
+                        "outputDimensionality", embeddingDimensions
                 );
                 Map<?, ?> response = restTemplate.postForObject(url, body, Map.class);
                 if (response != null && response.containsKey("embedding")) {
                     Map<?, ?> embedding = (Map<?, ?>) response.get("embedding");
                     List<?> values = (List<?>) embedding.get("values");
                     if (values != null && !values.isEmpty()) {
-                        return padAndFormatVector(values, 1536);
+                        return padAndFormatVector(values, embeddingDimensions);
                     }
                 }
+                log.warn("Gemini Embedding API returned no embedding values, using deterministic fallback");
             } catch (Exception e) {
                 log.warn("Gemini Embedding API call failed, using deterministic fallback: {}", e.getMessage());
             }
         }
         return generateRandomEmbedding(text);
+    }
+
+    /**
+     * Calls Gemini {@code generateContent} with the primary model and falls back through the
+     * configured chain of alternate models when the primary one fails (503 UNAVAILABLE, 404 model
+     * not found, empty content, ...).
+     *
+     * @return the raw text of the first successful response, or {@code null} if every model failed
+     */
+    private String callGeminiGenerateContent(Map<String, Object> body, Integer maxOutputTokens, String purpose) {
+        List<String> models = new ArrayList<>();
+        if (textModel != null && !textModel.isBlank()) {
+            models.add(textModel.trim());
+        }
+        if (fallbackModels != null && !fallbackModels.isBlank()) {
+            Arrays.stream(fallbackModels.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank() && !models.contains(s))
+                    .forEach(models::add);
+        }
+        if (models.isEmpty()) {
+            log.error("Gemini: no model configured for {}", purpose);
+            return null;
+        }
+
+        for (String model : models) {
+            try {
+                Map<String, Object> requestBody = body;
+                if (maxOutputTokens != null) {
+                    requestBody = new HashMap<>(body);
+                    Map<String, Object> genConfig = new HashMap<>();
+                    Object existing = requestBody.get("generationConfig");
+                    if (existing instanceof Map) {
+                        genConfig.putAll((Map<String, Object>) existing);
+                    }
+                    genConfig.put("maxOutputTokens", maxOutputTokens);
+                    requestBody.put("generationConfig", genConfig);
+                }
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                        + model + ":generateContent?key=" + geminiApiKey;
+                Map<?, ?> response = restTemplate.postForObject(url, requestBody, Map.class);
+                String text = extractFirstCandidateText(response);
+                if (text != null && !text.isBlank()) {
+                    log.info("Gemini [{}] succeeded for {}", model, purpose);
+                    return text;
+                }
+                log.warn("Gemini model [{}] returned empty content for {}", model, purpose);
+            } catch (Exception e) {
+                log.warn("Gemini model [{}] failed for {}: {} - trying next fallback", model, purpose, e.getMessage());
+            }
+        }
+
+        log.error("Gemini: all models failed for {}. Models tried: {}", purpose, models);
+        return null;
+    }
+
+    /**
+     * Extracts the text of the first candidate from a Gemini generateContent response.
+     */
+    private String extractFirstCandidateText(Map<?, ?> response) {
+        if (response == null || !response.containsKey("candidates")) {
+            return null;
+        }
+        List<?> candidates = (List<?>) response.get("candidates");
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        Map<?, ?> candidate = (Map<?, ?>) candidates.get(0);
+        if (candidate == null || !candidate.containsKey("content")) {
+            return null;
+        }
+        Map<?, ?> content = (Map<?, ?>) candidate.get("content");
+        if (content == null || !content.containsKey("parts")) {
+            return null;
+        }
+        List<?> parts = (List<?>) content.get("parts");
+        if (parts == null || parts.isEmpty()) {
+            return null;
+        }
+        Map<?, ?> textPart = (Map<?, ?>) parts.get(0);
+        if (textPart == null) {
+            return null;
+        }
+        Object text = textPart.get("text");
+        return text instanceof String ? (String) text : null;
     }
 
     /**
