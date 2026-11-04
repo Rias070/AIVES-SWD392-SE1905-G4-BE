@@ -15,5 +15,21 @@ services:
       - aives_pgdata:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aives_backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/aives_db
+      - SPRING_DATASOURCE_USERNAME=aives_user
+      - SPRING_DATASOURCE_PASSWORD=aives_password
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      - postgres
+
 volumes:
   aives_pgdata:

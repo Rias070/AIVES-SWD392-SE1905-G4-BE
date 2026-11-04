@@ -56,6 +56,18 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
             List<Rubric> rubrics,
             String lang) {
 
+        boolean isUnanswered = (studentTranscript == null || studentTranscript.isBlank() ||
+                studentTranscript.toLowerCase().contains("không trả lời") ||
+                studentTranscript.trim().length() < 3);
+        if (isUnanswered) {
+            return new VivaEvaluationResult(
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                    "Thí sinh không trả lời hoặc không ghi nhận được âm thanh trả lời cho câu hỏi này. Điểm đề xuất: 0.0.",
+                    "Thí sinh vui lòng tập trung và trả lời câu hỏi tiếp theo.",
+                    "Bloom 1 - Nhận biết"
+            );
+        }
+
         if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
             try {
                 StringBuilder rubricStr = new StringBuilder();
@@ -154,14 +166,17 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                     ragSection = "=== NỘI DUNG TÀI LIỆU HỌC LIỆU GỐC (GROUND TRUTH CONTEXT TỪ TÀI LIỆU/SLIDE ĐƯỢC CHỈ ĐỊNH) ===\n" +
                             ragContext + "\n" +
                             "=== QUY TẮC BẮT BUỘC (CRITICAL MANDATE) ===\n" +
-                            "1. Bạn PHẢI đọc kỹ nội dung tài liệu học phần ở trên và lấy ĐÚNG các khái niệm, quy trình, kiến trúc, mô hình cụ thể xuất hiện trong tài liệu này làm căn cứ tạo câu hỏi.\n" +
-                            "2. Câu hỏi PHẢI thể hiện rõ việc được trích xuất từ tài liệu đã cho, TUYỆT ĐỐI KHÔNG sinh câu hỏi chung chung xa rời nội dung tài liệu.\n\n";
+                            "1. BẮT BUỘC ĐỌC KỸ VĂN BẢN TÀI LIỆU: Trích xuất trực tiếp các định lý, công thức, mô hình, case study, thành phần cụ thể có thật trong văn bản để đặt câu hỏi.\n" +
+                            "2. ĐA DẠNG HÓA TUYỆT ĐỐI (DIVERSITY): Mỗi câu hỏi trong bộ " + count + " câu PHẢI hỏi về một phần kiến thức hoặc chủ đề HOÀN TOÀN KHÁC BIỆT. TUYỆT ĐỐI KHÔNG sinh câu hỏi lặp ý hay dùng chung một mô-típ mẫu câu.\n" +
+                            "3. Câu hỏi phải chuyên sâu, bám sát nội dung bài học, mang tính thực tế cao cho kỳ thi vấn đáp viva.\n\n";
                 }
+
+                String topicInfo = (topic != null && !topic.isBlank()) ? ("Focus Area: " + topic + "\n") : "Focus Area: Trích xuất trực tiếp từ các phần khác nhau trong tài liệu học liệu.\n";
 
                 String prompt = "You are a Senior Academic Examiner and Professor designing oral examination (viva) questions for course " +
                         subject.getCode() + " (" + subject.getName() + ").\n" +
                         "Language: Vietnamese (vi-VN).\n" +
-                        "Topic: " + topic + "\n" +
+                        topicInfo +
                         "Requested Bloom Taxonomy: " + safeBloom + "\n" +
                         "Requested Difficulty: " + safeDiff + "\n" +
                         "Question Count: " + count + "\n\n" +
@@ -879,6 +894,17 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
     }
 
     private VivaEvaluationResult computeDomainEvaluation(String subjectCode, int turnOrder, String transcript, String lang) {
+        boolean isUnanswered = (transcript == null || transcript.isBlank() ||
+                transcript.toLowerCase().contains("không trả lời") ||
+                transcript.trim().length() < 3);
+        if (isUnanswered) {
+            return new VivaEvaluationResult(
+                    BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+                    "Thí sinh không trả lời hoặc không ghi nhận được âm thanh trả lời cho câu hỏi này. Điểm đề xuất: 0.0.",
+                    "Thí sinh vui lòng tập trung và trả lời câu hỏi tiếp theo.",
+                    "Bloom 1 - Nhận biết"
+            );
+        }
         String lower = transcript != null ? transcript.toLowerCase() : "";
         String sCode = subjectCode != null ? subjectCode.toUpperCase().trim() : "SWD392";
 

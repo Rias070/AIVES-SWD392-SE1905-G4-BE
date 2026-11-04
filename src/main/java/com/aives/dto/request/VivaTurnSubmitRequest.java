@@ -11,6 +11,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class VivaTurnSubmitRequest {
     private UUID questionUuid;
+    private String questionContent;
 
     @NotNull(message = "Turn order is required")
     private Integer turnOrder;
@@ -18,4 +19,5 @@ public class VivaTurnSubmitRequest {
     private String studentAnswer;
     private String audioTranscript;
     private Integer turnDurationSeconds;
+    private String bloomLevel;
 }
