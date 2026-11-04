@@ -10,6 +10,7 @@ import com.aives.dto.response.RubricResponse;
 import com.aives.entity.*;
 import com.aives.enums.ErrorCode;
 import com.aives.exception.AppException;
+import com.aives.infrastructure.adapter.out.ai.GeminiAIAdapter;
 import com.aives.repository.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -203,29 +204,38 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     public List<QuestionResponse> generateQuestionsRAG(QuestionGenerateRequest request) {
         Subject subject = resolveSubject(request.getSubjectUuid(), request.getSubjectCode());
 
-        // 1. Retrieve RAG chunks
+        // 1. Retrieve RAG chunks (bỏ qua hoàn toàn nếu useRagContext = false)
+        boolean useRagContext = request.getUseRagContext() == null || request.getUseRagContext();
         List<DocumentChunk> chunks = new ArrayList<>();
-        if (request.getDocumentUuid() != null) {
-            chunks = documentChunkRepository.findByDocumentUuidOrderByChunkIndexAsc(request.getDocumentUuid());
-        }
-        if (chunks.isEmpty()) {
-            chunks = documentChunkRepository.findTopChunksBySubject(subject.getUuid(), 20);
-        }
-        if (chunks.isEmpty()) {
-            chunks = ensureFoundationChunks(subject);
-        }
+        String ragContext = "";
+        if (useRagContext) {
+            if (request.getDocumentUuid() != null) {
+                chunks = documentChunkRepository.findByDocumentUuidOrderByChunkIndexAsc(request.getDocumentUuid());
+            }
+            if (chunks.isEmpty()) {
+                chunks = documentChunkRepository.findTopChunksBySubject(subject.getUuid(), 20);
+            }
+            if (chunks.isEmpty()) {
+                chunks = ensureFoundationChunks(subject);
+            }
 
-        String ragContext = chunks.stream()
-                .map(DocumentChunk::getChunkContent)
-                .limit(15)
-                .collect(Collectors.joining("\n---\n"));
+            ragContext = chunks.stream()
+                    .map(DocumentChunk::getChunkContent)
+                    .limit(15)
+                    .collect(Collectors.joining("\n---\n"));
+        } else {
+            log.info("RAG context disabled by lecturer for subject {} - generating from topic/custom context only", subject.getCode());
+        }
 
         int count = request.getCount() != null ? Math.max(1, Math.min(10, request.getCount())) : 3;
         String topic = request.getTopic() != null && !request.getTopic().isBlank() && !"Trọng tâm kiến thức môn học".equalsIgnoreCase(request.getTopic().trim()) ? request.getTopic().trim() : null;
         String requestedBloom = request.getBloomLevel() != null ? request.getBloomLevel() : "ALL";
         String requestedDifficulty = request.getDifficulty() != null ? request.getDifficulty() : "MEDIUM";
+        String customContext = request.getCustomContext() != null && !request.getCustomContext().isBlank()
+                ? request.getCustomContext().trim() : null;
 
-        List<Map<String, Object>> generatedItems = llmProviderPort.generateQuestionsFromSyllabus(subject, topic, requestedBloom, requestedDifficulty, count, ragContext);
+        List<Map<String, Object>> generatedItems = llmProviderPort.generateQuestionsFromSyllabus(
+                subject, topic, requestedBloom, requestedDifficulty, count, ragContext, customContext);
 
         List<QuestionResponse> results = new ArrayList<>();
         for (int i = 0; i < generatedItems.size(); i++) {
@@ -793,6 +803,17 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
                 .build();
     }
 
+    /**
+     * Trích xuất số mức Bloom (1..6) từ nhãn lưu trong DB.
+     * Nhận diện được cả dạng canonical ("Bloom 4 - Phân tích"), dạng thô từ AI
+     * ("CREATE", "APPLY") và dạng có hậu tố ("Bloom 4 - Phân tích Dữ phức tạp").
+     *
+     * @return số mức 1..6, hoặc null nếu không xác định được.
+     */
+    private Integer bloomNumberOf(String raw) {
+        return GeminiAIAdapter.extractBloomNumber(raw);
+    }
+
     private QuestionResponse mapToQuestionResponse(Question q) {
         List<Rubric> rubrics = rubricRepository.findByQuestionUuid(q.getUuid());
         int rubricCount = rubrics.size();
@@ -812,10 +833,13 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
 
         boolean isApproved = "ACTIVE".equalsIgnoreCase(q.getStatus()) || "APPROVED".equalsIgnoreCase(q.getStatus());
 
+        // Màu badge theo MỨC BLOOM (số 1..6), không dựa vào contains("1")/contains("4")
+        // vì nhãn của Gemini có thể là dạng thô ("CREATE") hoặc có hậu tố ("Bloom 4 - Phân tích Dữ phức tạp").
+        Integer bloomNumber = bloomNumberOf(q.getBloomLevel());
         String bloomColor = "bg-blue-50 text-blue-700 border-blue-200";
-        if ("HARD".equalsIgnoreCase(q.getDifficulty()) || (q.getBloomLevel() != null && q.getBloomLevel().contains("4"))) {
+        if ("HARD".equalsIgnoreCase(q.getDifficulty()) || (bloomNumber != null && bloomNumber >= 4)) {
             bloomColor = "bg-purple-50 text-purple-700 border-purple-200";
-        } else if ("EASY".equalsIgnoreCase(q.getDifficulty()) || (q.getBloomLevel() != null && q.getBloomLevel().contains("1"))) {
+        } else if ("EASY".equalsIgnoreCase(q.getDifficulty()) || (bloomNumber != null && bloomNumber <= 2)) {
             bloomColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
         }
 

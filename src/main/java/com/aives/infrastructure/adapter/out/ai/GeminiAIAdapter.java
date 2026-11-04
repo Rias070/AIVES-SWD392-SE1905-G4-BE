@@ -15,10 +15,21 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Component
 @Slf4j
 public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
+
+    // ===== Canonical Bloom Taxonomy labels (single source of truth) =====
+    public static final String BLOOM_1 = "Bloom 1 - Nhận biết";
+    public static final String BLOOM_2 = "Bloom 2 - Thông hiểu";
+    public static final String BLOOM_3 = "Bloom 3 - Vận dụng";
+    public static final String BLOOM_4 = "Bloom 4 - Phân tích";
+    public static final String BLOOM_5 = "Bloom 5 - Đánh giá";
+    public static final String BLOOM_6 = "Bloom 6 - Sáng tạo";
+
+    private static final String[] BLOOM_LABELS = {BLOOM_1, BLOOM_2, BLOOM_3, BLOOM_4, BLOOM_5, BLOOM_6};
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -111,45 +122,93 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
             String difficulty,
             int count,
             String ragContext) {
+        return generateQuestionsFromSyllabus(subject, topic, bloomLevel, difficulty, count, ragContext, null);
+    }
 
-        String safeBloom = (bloomLevel != null && !bloomLevel.isBlank()) ? bloomLevel.trim() : "Bloom 3 - Vận dụng";
+    @Override
+    public List<Map<String, Object>> generateQuestionsFromSyllabus(
+            Subject subject,
+            String topic,
+            String bloomLevel,
+            String difficulty,
+            int count,
+            String ragContext,
+            String customContext) {
+
         String safeDiff = (difficulty != null && !difficulty.isBlank()) ? difficulty.trim().toUpperCase() : "MEDIUM";
+        String safeCustomContext = sanitizePromptInput(customContext, 8000);
+
+        // Bloom "ALL" nghĩa là giảng viên muốn bộ câu hỏi phủ đều 6 mức Bloom.
+        // Mọi mức khác đều là một mức cụ thể và sẽ được ép theo đúng mức đó.
+        boolean allBloom = bloomLevel == null || bloomLevel.isBlank() || "ALL".equalsIgnoreCase(bloomLevel.trim());
+        Integer requestedBloomNumber = allBloom ? null : extractBloomNumber(bloomLevel);
+        String requestedBloomLabel = requestedBloomNumber != null ? bloomLabelOf(requestedBloomNumber) : BLOOM_3;
+
+        // Kế hoạch Bloom ngẫu nhiên (chỉ dùng cho nhánh "ALL"): các mức được rút ngẫu nhiên
+        // trên toàn bộ dải 1-6 nên KHÔNG bao giờ cố định là 1,2,3... theo thứ tự tăng dần.
+        // Kế hoạch này được dùng cho cả prompt (bảng gán) lẫn việc ép nhãn sau khi parse,
+        // nên kết quả luôn khớp với nhau dù AI có tuân thủ prompt hay không.
+        List<Integer> bloomPlan = allBloom ? randomBloomPlan(count) : null;
+        if (allBloom) {
+            log.info("Random Bloom plan for ALL (count={}): {}", count, bloomPlan);
+        }
 
         if (geminiApiKey != null && !geminiApiKey.isBlank() && !"dummy_key".equalsIgnoreCase(geminiApiKey)) {
             try {
                 // Pedagogical Bloom Taxonomy & Difficulty Guidelines
                 String bloomDesc;
-                String normalizedBloom = safeBloom.toUpperCase();
-                if (normalizedBloom.contains("1") || normalizedBloom.contains("NHẬN BIẾT") || normalizedBloom.contains("REMEMBER")) {
+                if (allBloom) {
+                    bloomDesc = "ĐA DẠNG MỨC ĐỘ BLOOM (PHÂN BỔ NGẪU NHIÊN TRÊN TOÀN BỘ DẢI BLOOM 1-6):\n" +
+                            "- Trọng tâm: Bộ câu hỏi phải phủ đa dạng các mức nhận thức Bloom, KHÔNG được dồn cục vào một mức duy nhất.\n" +
+                            "- Quy tắc phân bổ: Mức Bloom của từng câu đã được hệ thống chọn NGẪU NHIÊN trên toàn bộ dải Bloom 1-6.\n" +
+                            "  Bạn PHẢI tuân thủ CHÍNH XÁC bảng gán được nêu ở mục BLOOM ASSIGNMENT bên dưới, KHÔNG tự ý đổi mức,\n" +
+                            "  KHÔNG được mặc định lần lượt theo thứ tự Bloom 1, Bloom 2, Bloom 3...\n" +
+                            "- Đặc trưng từng mức (phải thể hiện rõ trong nội dung câu hỏi):\n" +
+                            "  + Bloom 1 (NHẬN BIẾT): Hãy định nghĩa..., Hãy liệt kê..., Kể tên..., Nêu khái niệm về...\n" +
+                            "  + Bloom 2 (THÔNG HIỂU): Hãy giải thích tại sao..., Diễn giải nguyên lý..., Phân biệt cơ bản giữa...\n" +
+                            "  + Bloom 3 (VẬN DỤNG): Hãy vận dụng... để giải quyết tình huống..., Hãy áp dụng mẫu thiết kế...\n" +
+                            "  + Bloom 4 (PHÂN TÍCH): Hãy phân tích cơ chế nội tại..., Mổ xẻ..., So sánh đối chiếu...\n" +
+                            "  + Bloom 5 (ĐÁNH GIÁ): Hãy đánh giá sự đánh đổi..., Hãy phản biện..., Biện minh vì sao...\n" +
+                            "  + Bloom 6 (SÁNG TẠO): Hãy thiết kế..., Đề xuất giải pháp tổng thể..., Xây dựng chiến lược...\n" +
+                            "- Yêu cầu: Mỗi câu hỏi phải đúng với đặc trưng của mức Bloom được gán cho nó, và các câu phải khác nhau về chủ đề.";
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 1) {
                     bloomDesc = "MỨC ĐỘ BLOOM 1 (NHẬN BIẾT / REMEMBER):\n" +
                             "- Trọng tâm: Kiểm tra trí nhớ, nhận diện định nghĩa chuẩn, cú pháp, thuật ngữ chuyên ngành và các thành phần cốt lõi.\n" +
                             "- Động từ hành động bắt buộc: Hãy định nghĩa..., Hãy liệt kê..., Kể tên các thành phần của..., Nêu khái niệm về...\n" +
                             "- Yêu cầu: Câu hỏi rõ ràng, trực diện, KHÔNG bắt phân tích so sánh hay giải quyết tình huống phức tạp.";
-                } else if (normalizedBloom.contains("2") || normalizedBloom.contains("THÔNG HIỂU") || normalizedBloom.contains("UNDERSTAND")) {
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 2) {
                     bloomDesc = "MỨC ĐỘ BLOOM 2 (THÔNG HIỂU / UNDERSTAND):\n" +
                             "- Trọng tâm: Kiểm tra khả năng hiểu bản chất, giải thích nguyên lý hoạt động, làm rõ lý do tại sao công nghệ/mẫu thiết kế này ra đời và ý nghĩa của nó.\n" +
                             "- Động từ hành động bắt buộc: Hãy giải thích tại sao..., Diễn giải nguyên lý hoạt động của..., Trình bày bản chất của..., Phân biệt cơ bản giữa...\n" +
                             "- Yêu cầu: Yêu cầu sinh viên dùng ngôn từ của mình để làm rõ cơ chế, không chỉ đọc thuộc lòng định nghĩa.";
-                } else if (normalizedBloom.contains("3") || normalizedBloom.contains("VẬN DỤNG") || normalizedBloom.contains("APPLY")) {
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 3) {
                     bloomDesc = "MỨC ĐỘ BLOOM 3 (VẬN DỤNG / APPLY):\n" +
                             "- Trọng tâm: Đưa ra một tình huống/bài toán thực tế cụ thể trong phát triển phần mềm và yêu cầu sinh viên áp dụng trực tiếp kiến thức/mẫu thiết kế này để giải quyết.\n" +
                             "- Động từ hành động bắt buộc: Hãy vận dụng kiến thức về... để xử lý tình huống..., Hãy áp dụng mẫu thiết kế... để giải quyết bài toán..., Viết kịch bản thực thi...\n" +
                             "- Yêu cầu: Bắt buộc phải có ngữ cảnh tình huống nghiệp vụ thực tế (e.g. xử lý giỏ hàng, đặt vé máy bay, tính phí vận chuyển).";
-                } else if (normalizedBloom.contains("4") || normalizedBloom.contains("PHÂN TÍCH") || normalizedBloom.contains("ANALYZE")) {
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 4) {
                     bloomDesc = "MỨC ĐỘ BLOOM 4 (PHÂN TÍCH / ANALYZE):\n" +
                             "- Trọng tâm: Mổ xẻ chi tiết cơ chế nội tại, phân tích luồng dữ liệu, đối chiếu so sánh sâu sắc ưu/nhược điểm với giải pháp đối chứng, chỉ ra nguyên nhân gốc rễ (root cause).\n" +
                             "- Động từ hành động bắt buộc: Hãy phân tích cơ chế nội tại của..., Mổ xẻ luồng xử lý dữ liệu khi..., So sánh đối chiếu chuyên sâu giữa... và..., Chỉ ra nguyên nhân xảy ra hiện tượng...\n" +
                             "- Yêu cầu: Đòi hỏi tư duy bóc tách cấu trúc và làm rõ sự tương tác giữa các module.";
-                } else if (normalizedBloom.contains("5") || normalizedBloom.contains("ĐÁNH GIÁ") || normalizedBloom.contains("EVALUATE")) {
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 5) {
                     bloomDesc = "MỨC ĐỘ BLOOM 5 (ĐÁNH GIÁ & PHẢN BIỆN / EVALUATE):\n" +
                             "- Trọng tâm: Đặt sinh viên vào vai trò Kiến trúc sư phần mềm (Software Architect / Tech Lead) để đánh giá sự đánh đổi (Quality Attribute Trade-offs: Hiệu năng vs Bảo mật, Tính nhất quán vs Tính sẵn sàng), biện minh cho quyết định thiết kế và phản biện các phương án khác nhau.\n" +
                             "- Động từ hành động bắt buộc: Dưới góc độ kiến trúc sư, hãy đánh giá sự đánh đổi (trade-offs) giữa..., Hãy phản biện quyết định sử dụng..., Biện minh vì sao phương án A tối ưu hơn phương án B trong bối cảnh...\n" +
                             "- Yêu cầu: Phải có lập luận sắc bén, dựa trên các thuộc tính chất lượng (Latency, Scalability, Fault Tolerance, CAP theorem).";
-                } else {
+                } else if (requestedBloomNumber != null && requestedBloomNumber == 6) {
                     bloomDesc = "MỨC ĐỘ BLOOM 6 (SÁNG TẠO & THIẾT KẾ / CREATE):\n" +
                             "- Trọng tâm: Yêu cầu sinh viên thiết kế giải pháp kiến trúc tổng thể mới, đề xuất quy trình kỹ thuật hoặc phối hợp nhiều công nghệ thành một hệ thống chịu tải cao.\n" +
                             "- Động từ hành động bắt buộc: Hãy thiết kế kiến trúc hệ thống cho..., Đề xuất giải pháp tổng thể để tích hợp..., Xây dựng chiến lược kiểm soát chất lượng từ đầu đến cuối cho...\n" +
                             "- Yêu cầu: Đòi hỏi tính tổng hợp cao, tư duy hệ thống toàn diện.";
+                } else {
+                    // Không xác định được mức Bloom cụ thể -> dùng mức trung tính (Vận dụng).
+                    // KHÔNG dùng Bloom 6 ở nhánh này: nếu không, mọi giá trị lạ (vd: "ALL")
+                    // sẽ bị hiểu nhầm thành Bloom 6 (CREATE).
+                    bloomDesc = "MỨC ĐỘ BLOOM 3 (VẬN DỤNG / APPLY):\n" +
+                            "- Trọng tâm: Đưa ra một tình huống/bài toán thực tế cụ thể trong phát triển phần mềm và yêu cầu sinh viên áp dụng trực tiếp kiến thức/mẫu thiết kế này để giải quyết.\n" +
+                            "- Động từ hành động bắt buộc: Hãy vận dụng kiến thức về... để xử lý tình huống..., Hãy áp dụng mẫu thiết kế... để giải quyết bài toán...\n" +
+                            "- Yêu cầu: Bắt buộc phải có ngữ cảnh tình huống nghiệp vụ thực tế.";
                 }
 
                 String diffDesc;
@@ -159,6 +218,16 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                     diffDesc = "MỨC ĐỘ KHÓ KHÓ (HARD): Tình huống phức tạp ở quy mô lớn (High Concurrency, Distributed Lock, Network Partition, Race Condition, Failure Recovery, CAP theorem), yêu cầu tư duy phản biện sắc bén và xử lý các kịch bản ngoại lệ khắt khe.";
                 } else {
                     diffDesc = "MỨC ĐỘ KHÓ TRUNG BÌNH (MEDIUM): Tình huống thực tế tiêu biểu trong doanh nghiệp, đòi hỏi kết hợp giữa lý thuyết nền tảng và bài toán triển khai cụ thể.";
+                }
+
+                String customContextSection = "";
+                if (safeCustomContext != null && !safeCustomContext.isBlank()) {
+                    customContextSection = "=== CONTEXT TỰ DO TỪ GIẢNG VIÊN (ƯU TIÊN CAO NHẤT - NGUỒN SỰ THẬT CHÍNH THỨC) ===\n" +
+                            safeCustomContext + "\n" +
+                            "=== QUY TẮC BẮT BUỘC VỚI CONTEXT GIẢNG VIÊN ===\n" +
+                            "1. CHỈ dựa vào CONTEXT TỰ DO ở trên để đặt câu hỏi. Đây là nguồn kiến thức chính thức của giảng viên.\n" +
+                            "2. TUYỆT ĐỐI KHÔNG dùng tên file, đường dẫn hay tên tài liệu làm chủ đề nội dung câu hỏi.\n" +
+                            "3. Trích xuất trực tiếp định nghĩa, thuật ngữ, công thức, case study có thật trong context này.\n\n";
                 }
 
                 String ragSection = "";
@@ -171,26 +240,66 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                             "3. Câu hỏi phải chuyên sâu, bám sát nội dung bài học, mang tính thực tế cao cho kỳ thi vấn đáp viva.\n\n";
                 }
 
-                String topicInfo = (topic != null && !topic.isBlank()) ? ("Focus Area: " + topic + "\n") : "Focus Area: Trích xuất trực tiếp từ các phần khác nhau trong tài liệu học liệu.\n";
+                boolean hasRag = ragContext != null && !ragContext.isBlank();
+                boolean hasCustom = safeCustomContext != null && !safeCustomContext.isBlank();
+
+                String topicInfo;
+                if (topic != null && !topic.isBlank()) {
+                    topicInfo = "Focus Area: " + sanitizePromptInput(topic, 500) + "\n";
+                } else if (hasCustom) {
+                    topicInfo = "Focus Area: Trích xuất trực tiếp từ CONTEXT TỰ DO của giảng viên.\n";
+                } else if (hasRag) {
+                    topicInfo = "Focus Area: Trích xuất trực tiếp từ các phần khác nhau trong tài liệu học liệu.\n";
+                } else {
+                    topicInfo = "Focus Area: Thiết kế câu hỏi vấn đáp theo chủ đề trọng tâm của học phần, dựa trên kiến thức nền tảng của môn học.\n";
+                }
+
+                // Nhãn Bloom khai báo trong prompt + hướng dẫn gán nhãn cho từng câu
+                String bloomTemplateLine;
+                String bloomAssignmentRule;
+                if (allBloom) {
+                    bloomTemplateLine = "    \"bloomLevel\": \"Bloom N - <tên mức>\",\n";
+                    StringBuilder planLines = new StringBuilder();
+                    for (int i = 0; i < bloomPlan.size(); i++) {
+                        planLines.append("  Câu ").append(i + 1).append(" -> ").append(bloomLabelOf(bloomPlan.get(i))).append("\n");
+                    }
+                    bloomAssignmentRule = "BLOOM ASSIGNMENT (STRICT):\n" +
+                            "- Bạn được dùng đúng " + count + " câu hỏi, mỗi câu gán đúng MỘT mức Bloom.\n" +
+                            "- Các mức Bloom đã được hệ thống chọn NGẪU NHIÊN trên toàn bộ dải Bloom 1-6 (có thể xuất hiện Bloom 5 hoặc Bloom 6 ngay ở câu đầu tiên).\n" +
+                            "- Bạn PHẢI tuân thủ CHÍNH XÁC bảng gán sau, KHÔNG tự ý đổi mức cho câu nào:\n" +
+                            planLines +
+                            "- Chỉ được dùng đúng 6 nhãn sau, không dùng nhãn khác (ví dụ KHÔNG dùng \"CREATE\" hay \"Bloom 6\" viết tắt):\n" +
+                            "  [\"" + BLOOM_1 + "\", \"" + BLOOM_2 + "\", \"" + BLOOM_3 + "\", \"" + BLOOM_4 + "\", \"" + BLOOM_5 + "\", \"" + BLOOM_6 + "\"]\n" +
+                            "- Nội dung câu hỏi phải khớp với đúng đặc trưng của mức Bloom được gán.\n";
+                } else {
+                    bloomTemplateLine = "    \"bloomLevel\": \"" + requestedBloomLabel + "\",\n";
+                    bloomAssignmentRule = "BLOOM ASSIGNMENT (STRICT):\n" +
+                            "- Tất cả " + count + " câu hỏi BẮT BUỘC dùng mức Bloom: \"" + requestedBloomLabel + "\".\n" +
+                            "- KHÔNG được dùng bất kỳ mức Bloom nào khác. Trả về đúng chuỗi: \"" + requestedBloomLabel + "\".\n";
+                }
 
                 String prompt = "You are a Senior Academic Examiner and Professor designing oral examination (viva) questions for course " +
                         subject.getCode() + " (" + subject.getName() + ").\n" +
                         "Language: Vietnamese (vi-VN).\n" +
                         topicInfo +
-                        "Requested Bloom Taxonomy: " + safeBloom + "\n" +
+                        "Requested Bloom Taxonomy: " + (allBloom
+                                ? "ALL (các mức Bloom đã được phân bổ NGẪU NHIÊN theo bảng gán bên dưới)"
+                                : requestedBloomLabel) + "\n" +
                         "Requested Difficulty: " + safeDiff + "\n" +
                         "Question Count: " + count + "\n\n" +
                         "=== PEDAGOGICAL INSTRUCTIONS (MUST STRICTLY FOLLOW) ===\n" +
                         bloomDesc + "\n\n" +
                         diffDesc + "\n\n" +
+                        customContextSection +
                         ragSection +
                         "Task: Generate exactly " + count + " UNIQUE viva questions reflecting strictly the pedagogical guidelines and syllabus context above.\n" +
                         "Each question must explore a DIFFERENT angle of the topic (do NOT generate similar questions).\n" +
+                        bloomAssignmentRule + "\n" +
                         "Return ONLY a valid JSON Array (no Markdown ticks, no other text):\n" +
                         "[\n" +
                         "  {\n" +
                         "    \"content\": \"Câu hỏi vấn đáp chi tiết mang đúng tính chất của Bloom level và Độ khó yêu cầu...\",\n" +
-                        "    \"bloomLevel\": \"" + safeBloom + "\",\n" +
+                        bloomTemplateLine +
                         "    \"difficulty\": \"" + safeDiff + "\",\n" +
                         "    \"expectedAnswer\": \"Các luận điểm cốt lõi thí sinh cần nêu...\",\n" +
                         "    \"keywords\": [\"Từ khóa 1\", \"Từ khóa 2\"],\n" +
@@ -202,23 +311,40 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
                         "  }\n" +
                         "]";
 
-                Map<String, Object> part = Map.of("text", prompt);
-                Map<String, Object> contentObj = Map.of("parts", List.of(part));
-
-                Map<String, Object> generationConfig = new HashMap<>();
-                generationConfig.put("temperature", 0.85);
-                generationConfig.put("topK", 40);
-                generationConfig.put("topP", 0.95);
-                generationConfig.put("maxOutputTokens", 4096);
-
-                Map<String, Object> body = new HashMap<>();
-                body.put("contents", List.of(contentObj));
-                body.put("generationConfig", generationConfig);
+                Map<String, Object> body = buildRequestBody(prompt);
 
                 String rawText = callGeminiGenerateContent(body, null, "question-generation");
                 if (rawText != null) {
                     List<Map<String, Object>> parsed = parseGeminiQuestionJson(rawText);
                     if (parsed != null && !parsed.isEmpty()) {
+                        // Chuẩn hoá nhãn Bloom của AI về nhãn canonical
+                        normalizeBloomLabels(parsed, allBloom && bloomPlan != null && !bloomPlan.isEmpty()
+                                ? bloomLabelOf(bloomPlan.get(0))
+                                : requestedBloomLabel);
+                        if (!allBloom && !allMatchBloom(parsed, requestedBloomNumber)) {
+                            // AI trả sai mức Bloom -> thử lại 1 lần với prompt cứu vãn
+                            log.warn("Gemini returned questions with wrong Bloom level (expected {}), retrying once with corrective prompt",
+                                    requestedBloomLabel);
+                            String correctivePrompt = buildCorrectiveBloomPrompt(prompt, requestedBloomLabel, count);
+                            String retryRaw = callGeminiGenerateContent(buildRequestBody(correctivePrompt), null, "question-generation-retry");
+                            if (retryRaw != null) {
+                                List<Map<String, Object>> retried = parseGeminiQuestionJson(retryRaw);
+                                if (retried != null && !retried.isEmpty()) {
+                                    normalizeBloomLabels(retried, requestedBloomLabel);
+                                    if (!allMatchBloom(retried, requestedBloomNumber)) {
+                                        log.warn("Gemini still returned wrong Bloom level after retry, forcing all questions to {}",
+                                                requestedBloomLabel);
+                                    }
+                                    parsed = retried;
+                                }
+                            }
+                            // Ép nhãn về đúng mức đã yêu cầu trong mọi trường hợp
+                            forceBloomLabel(parsed, requestedBloomLabel);
+                        } else if (allBloom) {
+                            // Nhánh "ALL": ép từng câu theo đúng kế hoạch Bloom đã random trước,
+                            // bảo đảm độ phủ mức ngẫu nhiên (không phải 1,2,3... tuần tự).
+                            forceBloomPlan(parsed, bloomPlan);
+                        }
                         return parsed;
                     }
                     log.warn("Gemini returned content that could not be parsed as a question JSON array, using high-quality Domain Fallback Generator");
@@ -228,7 +354,84 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
             }
         }
 
-        return generateDomainFallbackQuestions(subject, topic, safeBloom, difficulty, count);
+        return generateDomainFallbackQuestions(subject, topic, allBloom ? "ALL" : requestedBloomLabel, difficulty, count);
+    }
+
+    /**
+     * Chuẩn hoá nhãn Bloom của từng câu về nhãn canonical.
+     * Nhãn không nhận diện được sẽ được gán bằng {@code fallbackLabel}.
+     */
+    private void normalizeBloomLabels(List<Map<String, Object>> items, String fallbackLabel) {
+        if (items == null) {
+            return;
+        }
+        for (Map<String, Object> item : items) {
+            Object raw = item.get("bloomLevel");
+            String normalized = normalizeBloomLabel(raw != null ? raw.toString() : null);
+            item.put("bloomLevel", normalized != null ? normalized : fallbackLabel);
+        }
+    }
+
+    /**
+     * Kiểm tra mọi câu hỏi có cùng đúng mức Bloom đã yêu cầu hay không.
+     */
+    private boolean allMatchBloom(List<Map<String, Object>> items, Integer expectedLevel) {
+        if (items == null || expectedLevel == null) {
+            return true;
+        }
+        for (Map<String, Object> item : items) {
+            Object raw = item.get("bloomLevel");
+            Integer level = extractBloomNumber(raw != null ? raw.toString() : null);
+            if (level == null || level != expectedLevel) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Ép nhãn Bloom của mọi câu hỏi về đúng mức đã yêu cầu.
+     */
+    private void forceBloomLabel(List<Map<String, Object>> items, String label) {
+        if (items == null) {
+            return;
+        }
+        for (Map<String, Object> item : items) {
+            item.put("bloomLevel", label);
+        }
+    }
+
+    /**
+     * Tạo prompt cứu vãn khi AI trả sai mức Bloom: nhấn mạnh mức bắt buộc,
+     * yêu cầu trả lại toàn bộ danh sách với đúng mức đó.
+     */
+    private String buildCorrectiveBloomPrompt(String originalPrompt, String requiredLabel, int count) {
+        return originalPrompt +
+                "\n\n=== CORRECTION REQUIRED (OVERRIDES ANYTHING ABOVE) ===\n" +
+                "Lần trước bạn đã gán sai mức Bloom cho các câu hỏi. Bạn PHẢI trả lại TOÀN BỘ " + count + " câu hỏi với:\n" +
+                "\"bloomLevel\": \"" + requiredLabel + "\"\n" +
+                "KHÔNG dùng mức Bloom nào khác. KHÔNG dùng nhãn viết tắt (vd: \"CREATE\", \"APPLY\").\n" +
+                "Nội dung mỗi câu phải đúng đặc trưng của mức \"" + requiredLabel + "\".\n" +
+                "Trả về ONLY a valid JSON Array (no Markdown ticks, no other text).";
+    }
+
+    /**
+     * Đóng gói body request cho Gemini từ một prompt.
+     */
+    private Map<String, Object> buildRequestBody(String prompt) {
+        Map<String, Object> part = Map.of("text", prompt);
+        Map<String, Object> contentObj = Map.of("parts", List.of(part));
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("temperature", 0.85);
+        generationConfig.put("topK", 40);
+        generationConfig.put("topP", 0.95);
+        generationConfig.put("maxOutputTokens", 4096);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("contents", List.of(contentObj));
+        body.put("generationConfig", generationConfig);
+        return body;
     }
 
     @Override
@@ -469,8 +672,11 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
     private List<Map<String, Object>> generateDomainFallbackQuestions(
             Subject subject, String topic, String bloomLevel, String difficulty, int count) {
         String code = subject != null && subject.getCode() != null ? subject.getCode().toUpperCase() : "SWD392";
-        String safeTopic = (topic != null && !topic.isBlank() && !"Trọng tâm kiến thức môn học".equals(topic)) 
-                ? topic.trim() 
+        String sanitizedTopic = (topic != null && !topic.isBlank() && !"Trọng tâm kiến thức môn học".equals(topic.trim()))
+                ? sanitizeTopicInput(topic)
+                : null;
+        String safeTopic = (sanitizedTopic != null && !sanitizedTopic.isBlank())
+                ? sanitizedTopic
                 : "Kiến trúc hệ thống và quy trình phát triển phần mềm";
         String safeDiff = (difficulty != null && !difficulty.isBlank() && !"ALL".equalsIgnoreCase(difficulty)) 
                 ? difficulty.toUpperCase() 
@@ -828,15 +1034,45 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
         ));
         bloomMap.put("BLOOM 6", b6List);
 
-        // Select matching pool based on bloomLevel
-        List<Map<String, Object>> targetPool = new ArrayList<>();
-        if (bloomLevel != null && !bloomLevel.isBlank() && !"ALL".equalsIgnoreCase(bloomLevel)) {
-            String upper = bloomLevel.toUpperCase();
-            for (Map.Entry<String, List<Map<String, Object>>> entry : bloomMap.entrySet()) {
-                if (upper.contains(entry.getKey())) {
-                    targetPool.addAll(entry.getValue());
-                    break;
+        // ===== Chọn pool câu hỏi theo mức Bloom đã yêu cầu =====
+        boolean allBloom = bloomLevel == null || bloomLevel.isBlank() || "ALL".equalsIgnoreCase(bloomLevel.trim());
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (allBloom) {
+            // Phân bổ NGẪU NHIÊN các mức Bloom: kế hoạch rút mức khác nhau từ {1..6}
+            // (lặp lại khi count > 6), nên 3 câu sẽ ra 3 mức bất kỳ trong dải 1-6,
+            // không cố định là Bloom 1, 2, 3 như trước.
+            List<List<Map<String, Object>>> orderedPools = new ArrayList<>();
+            for (String key : List.of("BLOOM 1", "BLOOM 2", "BLOOM 3", "BLOOM 4", "BLOOM 5", "BLOOM 6")) {
+                List<Map<String, Object>> pool = bloomMap.get(key);
+                if (pool != null && !pool.isEmpty()) {
+                    orderedPools.add(pool);
                 }
+            }
+            if (orderedPools.isEmpty()) {
+                return result;
+            }
+            List<Integer> plan = randomBloomPlan(count);
+            for (int i = 0; i < count; i++) {
+                int level = plan.get(i);
+                List<Map<String, Object>> pool = bloomMap.get("BLOOM " + level);
+                if (pool == null || pool.isEmpty()) {
+                    pool = orderedPools.get(i % orderedPools.size());
+                }
+                Map<String, Object> item = new HashMap<>(pool.get(i % pool.size()));
+                item.put("difficulty", safeDiff);
+                result.add(item);
+            }
+            return result;
+        }
+
+        // Mức Bloom cụ thể -> lấy đúng nhóm tương ứng
+        Integer requestedLevel = extractBloomNumber(bloomLevel);
+        List<Map<String, Object>> targetPool = new ArrayList<>();
+        if (requestedLevel != null) {
+            List<Map<String, Object>> pool = bloomMap.get("BLOOM " + requestedLevel);
+            if (pool != null) {
+                targetPool.addAll(pool);
             }
         }
         if (targetPool.isEmpty()) {
@@ -845,7 +1081,6 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
             }
         }
 
-        List<Map<String, Object>> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             Map<String, Object> item = new HashMap<>(targetPool.get(i % targetPool.size()));
             item.put("difficulty", safeDiff);
@@ -863,6 +1098,155 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
         map.put("keywords", kw);
         map.put("rubrics", rubrics);
         return map;
+    }
+
+    /**
+     * Làm sạch topic do người dùng nhập trước khi đưa vào prompt:
+     * - Loại bỏ ký tự điều khiển có thể phá vỡ cấu trúc prompt.
+     * - Giới hạn độ dài để tránh prompt bloat.
+     * - Trả về null nếu nội dung rỗng sau khi làm sạch.
+     */
+    private String sanitizePromptInput(String raw, int maxLength) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String cleaned = raw.replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ").trim();
+        if (cleaned.length() > maxLength) {
+            cleaned = cleaned.substring(0, maxLength);
+        }
+        return cleaned.isBlank() ? null : cleaned;
+    }
+
+    /**
+     * Sinh kế hoạch Bloom ngẫu nhiên cho {@code count} câu hỏi khi người dùng chọn "ALL".
+     * <ul>
+     *   <li>{@code count <= 6}: rút {@code count} mức KHÁC NHAU từ tập {1..6} (shuffle).</li>
+     *   <li>{@code count > 6}: lấy đủ 6 mức (đã shuffle) rồi lặp lại, mỗi vòng shuffle mới.</li>
+     * </ul>
+     * Kết quả KHÔNG bao giờ bắt đầu một cách cố định từ Bloom 1, nên bộ câu hỏi có
+     * độ phủ mức Bloom ngẫu nhiên trên toàn bộ dải 1-6.
+     */
+    private static List<Integer> randomBloomPlan(int count) {
+        List<Integer> plan = new ArrayList<>();
+        if (count <= 0) {
+            return plan;
+        }
+        List<Integer> levels = new ArrayList<>(List.of(1, 2, 3, 4, 5, 6));
+        while (plan.size() < count) {
+            Collections.shuffle(levels, ThreadLocalRandom.current());
+            for (int lv : levels) {
+                if (plan.size() >= count) {
+                    break;
+                }
+                plan.add(lv);
+            }
+        }
+        return plan;
+    }
+
+    /**
+     * Ép nhãn Bloom của từng câu hỏi theo đúng kế hoạch đã random (nhánh "ALL").
+     * Câu thứ {@code i} sẽ mang nhãn canonical của mức {@code plan.get(i)}.
+     * Nếu AI trả nhiều hơn số câu trong kế hoạch, các câu dư được giữ nguyên nhãn
+     * canonical đã chuẩn hoá (để tránh ép trùng mức).
+     */
+    private void forceBloomPlan(List<Map<String, Object>> items, List<Integer> plan) {
+        if (items == null || plan == null || plan.isEmpty()) {
+            return;
+        }
+        int limit = Math.min(items.size(), plan.size());
+        for (int i = 0; i < limit; i++) {
+            items.get(i).put("bloomLevel", bloomLabelOf(plan.get(i)));
+        }
+    }
+
+    /**
+     * Trích xuất số mức Bloom (1..6) từ một chuỗi bất kỳ.
+     * Nhận diện được cả dạng số ("Bloom 4", "4", "MỨC ĐỘ BLOOM 6") lẫn dạng từ khoá
+     * tiếng Anh / tiếng Việt ("CREATE", "SÁNG TẠO", "PHÂN TÍCH"...).
+     *
+     * @return số mức 1..6, hoặc null nếu không xác định được.
+     */
+    public static Integer extractBloomNumber(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String upper = raw.toUpperCase();
+
+        // Ưu tiên nhận diện theo từ khoá (chính xác hơn việc dò chữ số trong "BLOOM 6")
+        if (upper.contains("NHẬN BIẾT") || upper.contains("REMEMBER") || upper.contains("NHAN BIET")) {
+            return 1;
+        }
+        if (upper.contains("THÔNG HIỂU") || upper.contains("UNDERSTAND") || upper.contains("THONG HIEU")) {
+            return 2;
+        }
+        if (upper.contains("VẬN DỤNG") || upper.contains("APPLY") || upper.contains("VAN DUNG")) {
+            return 3;
+        }
+        if (upper.contains("PHÂN TÍCH") || upper.contains("ANALYZE") || upper.contains("ANALYSE") || upper.contains("PHAN TICH")) {
+            return 4;
+        }
+        if (upper.contains("ĐÁNH GIÁ") || upper.contains("EVALUATE") || upper.contains("DANH GIA")) {
+            return 5;
+        }
+        if (upper.contains("SÁNG TẠO") || upper.contains("CREATE") || upper.contains("SANG TAO")) {
+            return 6;
+        }
+
+        // Dò chữ số 1..6 đứng riêng (sau "Bloom", "mức", "level")
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?:BLOOM|MUC|LEVEL|LEVEL|CAP DO|CAPDO)?\\s*([1-6])")
+                .matcher(upper);
+        if (m.find()) {
+            return Integer.parseInt(m.group(1));
+        }
+        // Cuối cùng: chuỗi chỉ chứa đúng một chữ số 1..6
+        java.util.regex.Matcher single = java.util.regex.Pattern.compile("^[\\s\\-]*([1-6])[\\s\\-]*$").matcher(upper);
+        if (single.find()) {
+            return Integer.parseInt(single.group(1));
+        }
+        return null;
+    }
+
+    /**
+     * Chuẩn hoá nhãn Bloom của Gemini về nhãn canonical mà toàn hệ thống sử dụng.
+     * Gemini thường trả về nhãn thô như "CREATE", "Bloom 6", "APPLY"...
+     *
+     * @return nhãn canonical ("Bloom N - ..."), hoặc null nếu không xác định được.
+     */
+    public static String normalizeBloomLabel(String raw) {
+        Integer n = extractBloomNumber(raw);
+        if (n == null) {
+            return null;
+        }
+        return BLOOM_LABELS[n - 1];
+    }
+
+    /**
+     * Nhãn canonical của một mức Bloom (1..6).
+     */
+    public static String bloomLabelOf(int level) {
+        if (level < 1 || level > 6) {
+            return BLOOM_3;
+        }
+        return BLOOM_LABELS[level - 1];
+    }
+
+    /**
+     * Làm sạch chủ đề: loại bỏ phần mở rộng tên file và chuỗi giống slug/tên file
+     * (vd: "swd-test-quest.txt", "swd-test-quest") vì sẽ tạo ra câu hỏi vô nghĩa.
+     */
+    private String sanitizeTopicInput(String raw) {
+        String cleaned = sanitizePromptInput(raw, 500);
+        if (cleaned == null) {
+            return null;
+        }
+        String stripped = cleaned.replaceAll("\\.(txt|pdf|docx?|pptx?|md)$", "").trim();
+        // Chuỗi không có khoảng trắng giống tên file/slug -> không dùng làm chủ đề
+        if (stripped.isEmpty() || !stripped.contains(" ")) {
+            return null;
+        }
+        return stripped;
     }
 
     private VivaEvaluationResult parseGeminiOutput(String raw, int turnOrder, String subjectCode, String lang) {
