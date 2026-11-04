@@ -11,6 +11,12 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RubricRequest {
+    /**
+     * Id của tiêu chí đang tồn tại. Nếu có -> cập nhật tại chỗ (giữ nguyên uuid).
+     * Nếu null -> tạo tiêu chí mới.
+     */
+    private UUID uuid;
+
     private UUID subjectUuid;
     private UUID questionUuid;
 
@@ -22,6 +28,9 @@ public class RubricRequest {
     @Builder.Default
     private BigDecimal maxScore = new BigDecimal("10.00");
 
+    /**
+     * Trọng số (%). Hệ thống tự chuẩn hoá lại theo maxScore nên có thể bỏ qua.
+     */
     @Builder.Default
-    private BigDecimal weight = new BigDecimal("1.00");
+    private BigDecimal weight = new BigDecimal("100.00");
 }

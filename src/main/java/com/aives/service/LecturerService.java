@@ -21,6 +21,8 @@ import com.aives.application.port.in.LecturerQuestionUseCase;
 import com.aives.application.port.in.LecturerRubricUseCase;
 import com.aives.application.port.out.LLMProviderPort;
 import com.aives.application.port.out.VectorEmbeddingPort;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -46,6 +48,8 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     private final QuestionRepository questionRepository;
     private final RubricRepository rubricRepository;
     private final SubjectRepository subjectRepository;
+    private final SubjectLecturerRepository subjectLecturerRepository;
+    private final UserRepository userRepository;
     private final LLMProviderPort llmProviderPort;
     private final VectorEmbeddingPort vectorEmbeddingPort;
 
@@ -54,6 +58,8 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
                            QuestionRepository questionRepository,
                            RubricRepository rubricRepository,
                            SubjectRepository subjectRepository,
+                           SubjectLecturerRepository subjectLecturerRepository,
+                           UserRepository userRepository,
                            LLMProviderPort llmProviderPort,
                            VectorEmbeddingPort vectorEmbeddingPort) {
         this.documentRepository = documentRepository;
@@ -61,6 +67,8 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         this.questionRepository = questionRepository;
         this.rubricRepository = rubricRepository;
         this.subjectRepository = subjectRepository;
+        this.subjectLecturerRepository = subjectLecturerRepository;
+        this.userRepository = userRepository;
         this.llmProviderPort = llmProviderPort;
         this.vectorEmbeddingPort = vectorEmbeddingPort;
     }
@@ -288,7 +296,7 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
                             try { maxScore = new BigDecimal(rMap.get("maxScore").toString()); } catch (Exception ignored) {}
                         }
                         
-                        BigDecimal weight = new BigDecimal("1.00");
+                        BigDecimal weight = new BigDecimal("100.00");
                         if (rMap.get("weight") != null) {
                             try { weight = new BigDecimal(rMap.get("weight").toString()); } catch (Exception ignored) {}
                         }
@@ -305,6 +313,7 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
                         rubricResponses.add(mapToRubricResponse(rubric));
                     }
                 }
+                normalizeWeights(rubricRepository.findByQuestionUuid(q.getUuid()));
             } else {
                 // Default 3 standard criteria
                 Rubric r1 = Rubric.builder().subject(subject).question(q).criterionName("Khái niệm cơ bản & Thuật ngữ").description("Định nghĩa chính xác, sử dụng đúng thuật ngữ chuyên ngành").maxScore(new BigDecimal("3.00")).weight(new BigDecimal("30.00")).build();
@@ -398,17 +407,23 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         List<RubricResponse> rubricsList = new ArrayList<>();
         if (request.getRubrics() != null && !request.getRubrics().isEmpty()) {
             for (RubricRequest rReq : request.getRubrics()) {
+                if (rReq.getCriterionName() == null || rReq.getCriterionName().isBlank()) continue;
                 Rubric r = Rubric.builder()
                         .subject(subject)
                         .question(q)
-                        .criterionName(rReq.getCriterionName())
+                        .criterionName(rReq.getCriterionName().trim())
                         .description(rReq.getDescription())
                         .maxScore(rReq.getMaxScore() != null ? rReq.getMaxScore() : new BigDecimal("10.00"))
-                        .weight(rReq.getWeight() != null ? rReq.getWeight() : new BigDecimal("1.00"))
+                        .weight(new BigDecimal("100.00"))
                         .build();
                 r = rubricRepository.save(r);
                 rubricsList.add(mapToRubricResponse(r));
             }
+            normalizeWeights(rubricRepository.findByQuestionUuid(q.getUuid()));
+        } else {
+            // Không có rubric riêng -> copy từ Barem template của môn học
+            copyTemplateInternal(q, subject);
+            rubricsList = getRubricsByQuestion(q.getUuid());
         }
 
         QuestionResponse resp = mapToQuestionResponse(q);
@@ -434,25 +449,54 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
 
         q = questionRepository.save(q);
 
-        // Update rubrics if provided
+        // Update rubrics if provided - đồng bộ theo diff (giữ nguyên uuid của tiêu chí không đổi)
         if (request.getRubrics() != null) {
-            rubricRepository.deleteByQuestionUuid(id);
-            List<RubricResponse> updatedRubrics = new ArrayList<>();
-            for (RubricRequest rReq : request.getRubrics()) {
-                Rubric r = Rubric.builder()
-                        .subject(q.getSubject())
-                        .question(q)
-                        .criterionName(rReq.getCriterionName())
-                        .description(rReq.getDescription())
-                        .maxScore(rReq.getMaxScore() != null ? rReq.getMaxScore() : new BigDecimal("10.00"))
-                        .weight(rReq.getWeight() != null ? rReq.getWeight() : new BigDecimal("1.00"))
-                        .build();
-                r = rubricRepository.save(r);
-                updatedRubrics.add(mapToRubricResponse(r));
-            }
+            syncQuestionRubrics(q, request.getRubrics());
         }
 
         return mapToQuestionResponse(q);
+    }
+
+    /**
+     * Đồng bộ rubric của một câu hỏi theo danh sách mới:
+     * - Tiêu chí có uuid khớp -> cập nhật tại chỗ (giữ nguyên uuid, createdAt)
+     * - Tiêu chí mới (không uuid) -> tạo mới
+     * - Tiêu chí không còn trong danh sách -> xóa
+     */
+    private void syncQuestionRubrics(Question q, List<RubricRequest> incoming) {
+        List<Rubric> existing = rubricRepository.findByQuestionUuid(q.getUuid());
+        Map<UUID, Rubric> existingById = new HashMap<>();
+        for (Rubric r : existing) existingById.put(r.getUuid(), r);
+
+        Set<UUID> keptIds = new HashSet<>();
+
+        for (RubricRequest req : incoming) {
+            if (req.getCriterionName() == null || req.getCriterionName().isBlank()) continue;
+
+            Rubric target = req.getUuid() != null ? existingById.get(req.getUuid()) : null;
+            if (target == null) {
+                target = Rubric.builder()
+                        .subject(q.getSubject())
+                        .question(q)
+                        .build();
+            }
+
+            target.setCriterionName(req.getCriterionName().trim());
+            target.setDescription(req.getDescription());
+            target.setMaxScore(req.getMaxScore() != null ? req.getMaxScore() : new BigDecimal("10.00"));
+
+            rubricRepository.save(target);
+            keptIds.add(target.getUuid());
+        }
+
+        for (Rubric r : existing) {
+            if (!keptIds.contains(r.getUuid())) {
+                rubricRepository.delete(r);
+            }
+        }
+        rubricRepository.flush();
+
+        normalizeWeights(rubricRepository.findByQuestionUuid(q.getUuid()));
     }
 
     @Transactional
@@ -507,7 +551,19 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     // ==========================================
     // 4. RUBRICS MANAGEMENT
     // ==========================================
+    /**
+     * Lấy RUBRIC TEMPLATE (Barem chuẩn) của môn học - KHÔNG bao gồm rubric gắn vào câu hỏi.
+     */
     public List<RubricResponse> getRubricsBySubject(UUID subjectUuid) {
+        return rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subjectUuid).stream()
+                .map(this::mapToRubricResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Lấy TẤT CẢ rubric của môn học: template + rubric của từng câu hỏi.
+     */
+    public List<RubricResponse> getAllRubricsBySubject(UUID subjectUuid) {
         return rubricRepository.findBySubjectUuid(subjectUuid).stream()
                 .map(this::mapToRubricResponse)
                 .collect(Collectors.toList());
@@ -522,22 +578,25 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     @Transactional
     public RubricResponse createRubric(RubricRequest request) {
         Subject subject = resolveSubject(request.getSubjectUuid(), null);
+        verifyRubricPermission(subject.getUuid());
 
         Question question = null;
         if (request.getQuestionUuid() != null) {
-            question = questionRepository.findById(request.getQuestionUuid()).orElse(null);
+            question = questionRepository.findById(request.getQuestionUuid())
+                    .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
         }
 
         Rubric r = Rubric.builder()
                 .subject(subject)
                 .question(question)
-                .criterionName(request.getCriterionName())
+                .criterionName(request.getCriterionName().trim())
                 .description(request.getDescription())
-                .maxScore(request.getMaxScore())
-                .weight(request.getWeight())
+                .maxScore(request.getMaxScore() != null ? request.getMaxScore() : new BigDecimal("10.00"))
+                .weight(new BigDecimal("100.00"))
                 .build();
 
         r = rubricRepository.save(r);
+        normalizeWeights(groupOf(r));
         return mapToRubricResponse(r);
     }
 
@@ -546,21 +605,262 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         Rubric r = rubricRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.RUBRIC_NOT_FOUND));
 
-        if (request.getCriterionName() != null) r.setCriterionName(request.getCriterionName());
+        verifyRubricPermission(subjectUuidOf(r));
+
+        if (request.getCriterionName() != null && !request.getCriterionName().isBlank()) {
+            r.setCriterionName(request.getCriterionName().trim());
+        }
         if (request.getDescription() != null) r.setDescription(request.getDescription());
         if (request.getMaxScore() != null) r.setMaxScore(request.getMaxScore());
-        if (request.getWeight() != null) r.setWeight(request.getWeight());
 
         r = rubricRepository.save(r);
+        normalizeWeights(groupOf(r));
         return mapToRubricResponse(r);
     }
 
     @Transactional
     public void deleteRubric(UUID id) {
-        if (!rubricRepository.existsById(id)) {
-            throw new AppException(ErrorCode.RUBRIC_NOT_FOUND);
+        Rubric r = rubricRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.RUBRIC_NOT_FOUND));
+
+        verifyRubricPermission(subjectUuidOf(r));
+
+        rubricRepository.delete(r);
+        rubricRepository.flush();
+        normalizeWeights(groupOf(r));
+    }
+
+    /**
+     * Lưu cả bộ rubric của một nhóm (template của môn hoặc rubric của một câu hỏi) trong 1 lần gọi.
+     * Tiêu chí có {@code uuid} khớp sẽ được cập nhật, không có sẽ được tạo mới.
+     * Tiêu chí không còn trong danh sách sẽ bị xóa.
+     */
+    @Transactional
+    public List<RubricResponse> bulkSaveRubrics(UUID subjectUuid, UUID questionUuid, List<RubricRequest> rubrics) {
+        Subject subject = resolveSubject(subjectUuid, null);
+        verifyRubricPermission(subject.getUuid());
+
+        Question question = null;
+        if (questionUuid != null) {
+            question = questionRepository.findById(questionUuid)
+                    .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
         }
-        rubricRepository.deleteById(id);
+
+        List<Rubric> existing = question != null
+                ? rubricRepository.findByQuestionUuid(question.getUuid())
+                : rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subject.getUuid());
+
+        Map<UUID, Rubric> existingById = new HashMap<>();
+        for (Rubric r : existing) existingById.put(r.getUuid(), r);
+
+        Set<UUID> keptIds = new HashSet<>();
+        List<Rubric> saved = new ArrayList<>();
+
+        if (rubrics != null) {
+            for (RubricRequest req : rubrics) {
+                if (req.getCriterionName() == null || req.getCriterionName().isBlank()) continue;
+
+                Rubric target = null;
+                if (req.getUuid() != null) {
+                    target = existingById.get(req.getUuid());
+                }
+                if (target == null) {
+                    target = Rubric.builder()
+                            .subject(subject)
+                            .question(question)
+                            .build();
+                }
+
+                target.setCriterionName(req.getCriterionName().trim());
+                target.setDescription(req.getDescription());
+                target.setMaxScore(req.getMaxScore() != null ? req.getMaxScore() : new BigDecimal("10.00"));
+                target.setWeight(new BigDecimal("100.00"));
+
+                saved.add(rubricRepository.save(target));
+                keptIds.add(target.getUuid());
+            }
+        }
+
+        // Xóa các tiêu chí không còn nằm trong danh sách mới
+        for (Rubric r : existing) {
+            if (!keptIds.contains(r.getUuid())) {
+                rubricRepository.delete(r);
+            }
+        }
+        rubricRepository.flush();
+
+        List<Rubric> group = question != null
+                ? rubricRepository.findByQuestionUuid(question.getUuid())
+                : rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subject.getUuid());
+        normalizeWeights(group);
+
+        return group.stream().map(this::mapToRubricResponse).collect(Collectors.toList());
+    }
+
+    /**
+     * Copy rubric template của môn học vào một câu hỏi (chỉ khi câu hỏi chưa có rubric riêng).
+     */
+    @Transactional
+    public int copySubjectTemplateToQuestion(UUID questionId) {
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
+
+        Subject subject = question.getSubject();
+        if (subject == null) throw new AppException(ErrorCode.SUBJECT_NOT_FOUND);
+
+        verifyRubricPermission(subject.getUuid());
+        return copyTemplateInternal(question, subject);
+    }
+
+    /**
+     * Copy template môn học vào câu hỏi - KHÔNG kiểm tra quyền (dùng nội bộ).
+     */
+    private int copyTemplateInternal(Question question, Subject subject) {
+        List<Rubric> templates = rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subject.getUuid());
+        if (templates.isEmpty()) {
+            log.info("No rubric template for subject {}, nothing to copy", subject.getCode());
+            return 0;
+        }
+
+        if (!rubricRepository.findByQuestionUuid(question.getUuid()).isEmpty()) {
+            log.info("Question {} already has its own rubrics, skipping template copy", question.getUuid());
+            return 0;
+        }
+
+        List<Rubric> copies = new ArrayList<>();
+        for (Rubric t : templates) {
+            copies.add(Rubric.builder()
+                    .subject(subject)
+                    .question(question)
+                    .criterionName(t.getCriterionName())
+                    .description(t.getDescription())
+                    .maxScore(t.getMaxScore())
+                    .weight(t.getWeight())
+                    .build());
+        }
+        rubricRepository.saveAll(copies);
+        normalizeWeights(copies);
+        log.info("Copied {} rubric template(s) into question {}", copies.size(), question.getUuid());
+        return copies.size();
+    }
+
+    /**
+     * Áp dụng rubric template của môn học cho TẤT CẢ câu hỏi của môn chưa có rubric riêng.
+     */
+    @Transactional
+    public int applySubjectTemplateToSubject(UUID subjectId) {
+        Subject subject = subjectRepository.findById(subjectId)
+                .orElseThrow(() -> new AppException(ErrorCode.SUBJECT_NOT_FOUND));
+
+        verifyRubricPermission(subject.getUuid());
+
+        List<Question> questions = questionRepository.findBySubjectUuid(subjectId).stream()
+                .filter(q -> !"INACTIVE".equalsIgnoreCase(q.getStatus()))
+                .toList();
+
+        int copied = 0;
+        for (Question q : questions) {
+            copied += copyTemplateInternal(q, subject);
+        }
+        log.info("Applied subject template to {} question(s) of subject {}", copied, subject.getCode());
+        return copied;
+    }
+
+    // ==========================================
+    // RUBRIC HELPERS
+    // ==========================================
+
+    /**
+     * Trả về nhóm rubric chứa một rubric cụ thể:
+     * - rubric của câu hỏi nếu có question_uuid
+     * - rubric template của môn học nếu không gắn câu hỏi nào
+     */
+    private List<Rubric> groupOf(Rubric rubric) {
+        if (rubric.getQuestion() != null) {
+            return rubricRepository.findByQuestionUuid(rubric.getQuestion().getUuid());
+        }
+        return rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(rubric.getSubject().getUuid());
+    }
+
+    /**
+     * Lấy uuid môn học sở hữu rubric (môn học luôn được gán cho mọi rubric).
+     */
+    private UUID subjectUuidOf(Rubric rubric) {
+        if (rubric.getSubject() == null) {
+            throw new AppException(ErrorCode.SUBJECT_NOT_FOUND);
+        }
+        return rubric.getSubject().getUuid();
+    }
+
+    /**
+     * Chuẩn hoá trọng số theo phần trăm dựa trên maxScore:
+     * weight_i = maxScore_i / SUM(maxScore) * 100  ->  tổng luôn = 100.
+     */
+    private void normalizeWeights(List<Rubric> group) {
+        if (group == null || group.isEmpty()) return;
+
+        BigDecimal total = group.stream()
+                .map(r -> r.getMaxScore() != null ? r.getMaxScore() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal even = new BigDecimal("100.00")
+                    .divide(new BigDecimal(group.size()), 2, java.math.RoundingMode.HALF_UP);
+            for (Rubric r : group) r.setWeight(even);
+        } else {
+            BigDecimal assigned = BigDecimal.ZERO;
+            for (int i = 0; i < group.size(); i++) {
+                Rubric r = group.get(i);
+                BigDecimal score = r.getMaxScore() != null ? r.getMaxScore() : BigDecimal.ZERO;
+                BigDecimal w;
+                if (i == group.size() - 1) {
+                    // Tiêu chí cuối nhận phần trọng số còn lại để tổng luôn đúng 100
+                    w = new BigDecimal("100.00").subtract(assigned);
+                    if (w.compareTo(BigDecimal.ZERO) < 0) w = BigDecimal.ZERO;
+                } else {
+                    w = score.multiply(new BigDecimal("100.00"))
+                            .divide(total, 2, java.math.RoundingMode.HALF_UP);
+                    assigned = assigned.add(w);
+                }
+                r.setWeight(w);
+            }
+        }
+        rubricRepository.saveAll(group);
+    }
+
+    /**
+     * Kiểm tra quyền được phép quản lý rubric của môn học.
+     * - ADMIN: bypass
+     * - LECTURER: phải được phân công môn học với canEditRubric = true
+     */
+    private void verifyRubricPermission(UUID subjectUuid) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED, "Vui lòng đăng nhập để thực hiện thao tác");
+        }
+
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()) || "ADMIN".equalsIgnoreCase(a.getAuthority()));
+        if (isAdmin) return;
+
+        UUID userUuid;
+        try {
+            userUuid = UUID.fromString(auth.getName());
+        } catch (IllegalArgumentException e) {
+            User user = userRepository.findByEmail(auth.getName())
+                    .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED, "Không tìm thấy thông tin tài khoản"));
+            userUuid = user.getUuid();
+        }
+
+        SubjectLecturer assignment = subjectLecturerRepository
+                .findBySubjectUuidAndLecturerUuid(subjectUuid, userUuid)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED,
+                        "Bạn không được phân công môn học này nên không có quyền quản lý Rubric."));
+
+        if (!Boolean.TRUE.equals(assignment.getCanEditRubric())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED,
+                    "Bạn không có quyền sửa Rubric cho môn học này. Vui lòng liên hệ Quản trị viên.");
+        }
     }
 
     // ==========================================
@@ -818,7 +1118,8 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
         List<Rubric> rubrics = rubricRepository.findByQuestionUuid(q.getUuid());
         int rubricCount = rubrics.size();
         if (rubricCount == 0 && q.getSubject() != null) {
-            rubrics = rubricRepository.findBySubjectUuid(q.getSubject().getUuid());
+            // Fallback về rubric TEMPLATE của môn học (không lấy rubric của câu hỏi khác)
+            rubrics = rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(q.getSubject().getUuid());
             rubricCount = rubrics.size();
         }
         if (rubricCount == 0) rubricCount = 3;
@@ -871,8 +1172,10 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
     private RubricResponse mapToRubricResponse(Rubric r) {
         return RubricResponse.builder()
                 .uuid(r.getUuid())
+                .id(r.getUuid())
                 .subjectId(r.getSubject() != null ? r.getSubject().getUuid() : null)
                 .questionId(r.getQuestion() != null ? r.getQuestion().getUuid() : null)
+                .isTemplate(r.getQuestion() == null)
                 .criterionName(r.getCriterionName())
                 .description(r.getDescription())
                 .maxScore(r.getMaxScore())
