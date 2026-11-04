@@ -209,7 +209,7 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
             chunks = documentChunkRepository.findByDocumentUuidOrderByChunkIndexAsc(request.getDocumentUuid());
         }
         if (chunks.isEmpty()) {
-            chunks = documentChunkRepository.findTopChunksBySubject(subject.getUuid(), 10);
+            chunks = documentChunkRepository.findTopChunksBySubject(subject.getUuid(), 20);
         }
         if (chunks.isEmpty()) {
             chunks = ensureFoundationChunks(subject);
@@ -217,11 +217,11 @@ public class LecturerService implements LecturerDocumentUseCase, LecturerQuestio
 
         String ragContext = chunks.stream()
                 .map(DocumentChunk::getChunkContent)
-                .limit(6)
+                .limit(15)
                 .collect(Collectors.joining("\n---\n"));
 
         int count = request.getCount() != null ? Math.max(1, Math.min(10, request.getCount())) : 3;
-        String topic = request.getTopic() != null && !request.getTopic().isBlank() ? request.getTopic().trim() : "Trọng tâm kiến thức môn học";
+        String topic = request.getTopic() != null && !request.getTopic().isBlank() && !"Trọng tâm kiến thức môn học".equalsIgnoreCase(request.getTopic().trim()) ? request.getTopic().trim() : null;
         String requestedBloom = request.getBloomLevel() != null ? request.getBloomLevel() : "ALL";
         String requestedDifficulty = request.getDifficulty() != null ? request.getDifficulty() : "MEDIUM";
 

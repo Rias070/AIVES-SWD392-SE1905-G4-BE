@@ -1,6 +1,7 @@
 package com.aives.application.port.in;
 
 import com.aives.dto.request.ExamStartRequest;
+import com.aives.dto.request.LecturerCreateExamRequest;
 import com.aives.dto.request.LecturerFinalizeScoreRequest;
 import com.aives.dto.request.VivaTurnSubmitRequest;
 import com.aives.dto.request.VivaTurnWsRequest;
@@ -20,4 +21,6 @@ public interface StudentExamUseCase {
     ExamSessionResponse finishExamSession(UUID sessionId);
     VivaTurnWsResponse processVivaTurn(UUID sessionId, VivaTurnWsRequest request);
     ExamSessionResponse finalizeExamSessionScore(UUID sessionId, LecturerFinalizeScoreRequest request);
+    ExamSessionResponse createExamSession(UUID examinerId, LecturerCreateExamRequest request);
+    void deleteExamSession(UUID sessionId);
 }

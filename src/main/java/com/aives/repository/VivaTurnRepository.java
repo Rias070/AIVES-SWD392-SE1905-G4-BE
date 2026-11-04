@@ -10,4 +10,5 @@ import java.util.UUID;
 @Repository
 public interface VivaTurnRepository extends JpaRepository<VivaTurn, UUID> {
     List<VivaTurn> findByExamSessionUuidOrderByTurnOrderAsc(UUID examSessionUuid);
+    void deleteByExamSessionUuid(UUID examSessionUuid);
 }
