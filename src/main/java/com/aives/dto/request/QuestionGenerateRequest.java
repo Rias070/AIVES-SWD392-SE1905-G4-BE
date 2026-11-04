@@ -16,6 +16,19 @@ public class QuestionGenerateRequest {
 
     private String topic; // E.g. "Session Management in Spring", "Dijkstra algorithm"
 
+    /**
+     * Context tự do do giảng viên nhập tay (đề cương, ghi chú, đề thi cũ...).
+     * Được ưu tiên cao hơn nội dung RAG khi truyền vào prompt LLM.
+     */
+    private String customContext;
+
+    /**
+     * Cờ bật/tắt tham khảo tài liệu RAG.
+     * null hoặc true => dùng RAG (giữ hành vi mặc định).
+     * false => bỏ qua hoàn toàn việc truy xuất chunk tài liệu.
+     */
+    private Boolean useRagContext;
+
     @Builder.Default
     private String bloomLevel = "ALL"; // REMEMBER, UNDERSTAND, APPLY, ANALYZE, or ALL
 
