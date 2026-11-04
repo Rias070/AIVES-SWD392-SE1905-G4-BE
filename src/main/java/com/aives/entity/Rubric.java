@@ -40,9 +40,13 @@ public class Rubric {
     @Builder.Default
     private BigDecimal maxScore = new BigDecimal("10.00");
 
+    /**
+     * Trọng số theo phần trăm (0-100). Tổng của mỗi nhóm rubric
+     * (template của môn hoặc rubric của một câu hỏi) luôn bằng 100.
+     */
     @Column(name = "weight", precision = 5, scale = 2)
     @Builder.Default
-    private BigDecimal weight = new BigDecimal("1.00");
+    private BigDecimal weight = new BigDecimal("100.00");
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -51,4 +55,11 @@ public class Rubric {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    /**
+     * Rubric template của môn học (Barem chuẩn) khi KHÔNG gắn vào câu hỏi nào.
+     */
+    public boolean isTemplate() {
+        return question == null;
+    }
 }

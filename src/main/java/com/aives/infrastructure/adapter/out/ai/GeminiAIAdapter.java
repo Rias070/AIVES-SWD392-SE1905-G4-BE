@@ -83,9 +83,14 @@ public class GeminiAIAdapter implements LLMProviderPort, VectorEmbeddingPort {
             try {
                 StringBuilder rubricStr = new StringBuilder();
                 if (rubrics != null && !rubrics.isEmpty()) {
+                    // weight được chuẩn hoá theo % (tổng = 100) nên dùng trực tiếp làm trọng số
                     for (Rubric r : rubrics) {
+                        BigDecimal weight = r.getWeight() != null ? r.getWeight() : new BigDecimal("100.00");
+                        BigDecimal maxScore = r.getMaxScore() != null ? r.getMaxScore() : new BigDecimal("10.00");
                         rubricStr.append("- ").append(r.getCriterionName())
-                                .append(" (").append(r.getWeight() != null ? r.getWeight() : 20).append("%): ")
+                                .append(" (trọng số ").append(weight.stripTrailingZeros().toPlainString())
+                                .append("%, điểm tối đa ").append(maxScore.stripTrailingZeros().toPlainString())
+                                .append("): ")
                                 .append(r.getDescription() != null ? r.getDescription() : "").append("\n");
                     }
                 }

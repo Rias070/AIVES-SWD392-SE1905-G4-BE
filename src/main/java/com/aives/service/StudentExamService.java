@@ -210,9 +210,9 @@ public class StudentExamService implements StudentExamUseCase {
         }
         if (rubrics.isEmpty() && subjectUuid != null) {
             try {
-                rubrics = rubricRepository.findBySubjectUuid(subjectUuid);
+                rubrics = rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subjectUuid);
             } catch (Exception e) {
-                log.warn("Could not fetch rubrics for subject: {}", e.getMessage());
+                log.warn("Could not fetch rubric template for subject: {}", e.getMessage());
             }
         }
 
@@ -422,9 +422,9 @@ public class StudentExamService implements StudentExamUseCase {
         }
         if (rubrics.isEmpty() && subjectUuid != null) {
             try {
-                rubrics = rubricRepository.findBySubjectUuid(subjectUuid);
+                rubrics = rubricRepository.findBySubjectUuidAndQuestionUuidIsNull(subjectUuid);
             } catch (Exception e) {
-                log.warn("Could not fetch rubrics for subject: {}", e.getMessage());
+                log.warn("Could not fetch rubric template for subject: {}", e.getMessage());
             }
         }
 

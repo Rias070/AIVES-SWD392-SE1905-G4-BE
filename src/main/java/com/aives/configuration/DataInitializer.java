@@ -12,7 +12,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Component
 @Slf4j
@@ -245,7 +250,71 @@ public class DataInitializer implements ApplicationRunner {
                 )
         );
 
+        // 8. Normalize rubric weights (migration - idempotent)
+        normalizeRubricWeights();
+
         log.info("AIVES data initialization completed successfully.");
+    }
+
+    /**
+     * Chuẩn hoá trọng số rubric theo phần trăm dựa trên maxScore:
+     * weight_i = maxScore_i / SUM(maxScore) * 100  ->  tổng luôn = 100.
+     *
+     * Nhóm = rubric template của môn (question_uuid IS NULL) hoặc rubric của một câu hỏi.
+     * Idempotent - an toàn khi chạy mỗi lần app start.
+     */
+    private void normalizeRubricWeights() {
+        List<Rubric> all = rubricRepository.findAll();
+        if (all.isEmpty()) return;
+
+        Map<UUID, List<Rubric>> groups = new LinkedHashMap<>();
+        for (Rubric r : all) {
+            UUID key = (r.getQuestion() != null)
+                    ? r.getQuestion().getUuid()
+                    : (r.getSubject() != null ? r.getSubject().getUuid() : UUID.randomUUID());
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
+        }
+
+        int updatedGroups = 0;
+        for (List<Rubric> group : groups.values()) {
+            BigDecimal total = group.stream()
+                    .map(r -> r.getMaxScore() != null ? r.getMaxScore() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            boolean needsUpdate = false;
+            BigDecimal assigned = BigDecimal.ZERO;
+            for (int i = 0; i < group.size(); i++) {
+                Rubric r = group.get(i);
+                BigDecimal expected;
+                if (total.compareTo(BigDecimal.ZERO) > 0) {
+                    if (i == group.size() - 1) {
+                        expected = new BigDecimal("100.00").subtract(assigned);
+                        if (expected.compareTo(BigDecimal.ZERO) < 0) expected = BigDecimal.ZERO;
+                    } else {
+                        expected = (r.getMaxScore() != null ? r.getMaxScore() : BigDecimal.ZERO)
+                                .multiply(new BigDecimal("100.00"))
+                                .divide(total, 2, RoundingMode.HALF_UP);
+                        assigned = assigned.add(expected);
+                    }
+                } else {
+                    expected = new BigDecimal("100.00")
+                            .divide(new BigDecimal(group.size()), 2, RoundingMode.HALF_UP);
+                }
+
+                if (r.getWeight() == null || r.getWeight().compareTo(expected) != 0) {
+                    r.setWeight(expected);
+                    needsUpdate = true;
+                }
+            }
+            if (needsUpdate) {
+                rubricRepository.saveAll(group);
+                updatedGroups++;
+            }
+        }
+
+        if (updatedGroups > 0) {
+            log.info("Normalized weights for {} rubric group(s)", updatedGroups);
+        }
     }
 
     /**
